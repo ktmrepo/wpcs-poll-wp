@@ -8,26 +8,26 @@ Core Plugin Structure
 wpcs-poll/
 +-- wpcs-poll.php (Main plugin file)
 +-- includes/
-¦   +-- class-wpcs-poll.php (Core plugin class)
-¦   +-- class-wpcs-poll-activator.php (Activation hooks)
-¦   +-- class-wpcs-poll-deactivator.php (Deactivation hooks)
-¦   +-- class-wpcs-poll-database.php (Database operations)
-¦   +-- class-wpcs-poll-ajax.php (AJAX handlers)
-¦   +-- class-wpcs-poll-shortcodes.php (Shortcode handlers)
-¦   +-- class-wpcs-poll-rest-api.php (REST API endpoints)
-¦   +-- class-wpcs-poll-admin.php (Admin functionality)
+Â¦   +-- class-wpcs-poll.php (Core plugin class)
+Â¦   +-- class-wpcs-poll-activator.php (Activation hooks)
+Â¦   +-- class-wpcs-poll-deactivator.php (Deactivation hooks)
+Â¦   +-- class-wpcs-poll-database.php (Database operations)
+Â¦   +-- class-wpcs-poll-ajax.php (AJAX handlers)
+Â¦   +-- class-wpcs-poll-shortcodes.php (Shortcode handlers)
+Â¦   +-- class-wpcs-poll-rest-api.php (REST API endpoints)
+Â¦   +-- class-wpcs-poll-admin.php (Admin functionality)
 +-- admin/
-¦   +-- css/ (Admin stylesheets)
-¦   +-- js/ (Admin JavaScript)
-¦   +-- partials/ (Admin template files)
-¦   +-- class-wpcs-poll-admin-pages.php
+Â¦   +-- css/ (Admin stylesheets)
+Â¦   +-- js/ (Admin JavaScript)
+Â¦   +-- partials/ (Admin template files)
+Â¦   +-- class-wpcs-poll-admin-pages.php
 +-- public/
-¦   +-- css/ (Frontend stylesheets)
-¦   +-- js/ (Frontend JavaScript)
-¦   +-- partials/ (Frontend template files)
+Â¦   +-- css/ (Frontend stylesheets)
+Â¦   +-- js/ (Frontend JavaScript)
+Â¦   +-- partials/ (Frontend template files)
 +-- assets/
-¦   +-- images/
-¦   +-- icons/
+Â¦   +-- images/
+Â¦   +-- icons/
 +-- languages/ (Translation files)
 
 
@@ -331,4 +331,3 @@ Inline code documentation
 API endpoint documentation
 Component prop documentation
 Database schema documentation
-This documentation represents the current state of the WPCS Poll application, showcasing a robust, scalable polling platform with modern web technologies and comprehensive administrative capabilities.
