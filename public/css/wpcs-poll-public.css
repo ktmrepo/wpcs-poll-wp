@@ -1,0 +1,186 @@
+/* WPCS Poll Public Styles */
+
+.wpcs-poll-container {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+  background: #000;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.wpcs-poll-style-tiktok {
+  height: 600px;
+}
+
+.wpcs-poll-style-grid .wpcs-polls-wrapper {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  padding: 20px;
+}
+
+.wpcs-poll-style-list .wpcs-polls-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 20px;
+}
+
+/* Poll Cards */
+.wpcs-poll-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 30px;
+  opacity: 0;
+  transform: translateY(100%);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wpcs-poll-card.active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.wpcs-poll-style-grid .wpcs-poll-card,
+.wpcs-poll-style-list .wpcs-poll-card {
+  position: relative;
+  transform: none;
+  opacity: 1;
+  height: auto;
+  min-height: 300px;
+  margin-bottom: 20px;
+}
+
+/* Poll Content */
+.poll-content {
+  color: white;
+  text-align: center;
+}
+
+.poll-title {
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 10px;
+  line-height: 1.3;
+}
+
+.poll-description {
+  font-size: 16px;
+  opacity: 0.9;
+  margin-bottom: 25px;
+  line-height: 1.4;
+}
+
+/* Poll Options */
+.poll-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 25px;
+}
+
+.poll-option {
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 15px;
+  padding: 15px 20px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.poll-option:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-2px);
+}
+
+.poll-option.selected {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: #fff;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+}
+
+.option-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+}
+
+.option-text {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.option-percentage {
+  font-size: 14px;
+  font-weight: bold;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.poll-option.show-results .option-percentage {
+  opacity: 1;
+}
+
+/* Progress Bar */
+.option-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.poll-option.show-results .option-progress {
+  opacity: 1;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.3),
+    rgba(255, 255, 255, 0.1)
+  );
+  border-radius: 13px;
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: left;
+}
+
+.option-votes {
+  position: absolute;
+  bottom: -25px;
+  right: 0;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.poll-option.show-results .option-votes {
+  opacity: 0.8;
+}
+
+/* Poll Meta */
+.poll-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14;
+}
