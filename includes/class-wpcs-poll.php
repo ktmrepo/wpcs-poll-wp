@@ -13,6 +13,8 @@ class WPCS_Poll {
     }
 
     private function load_dependencies() {
+        require_once WPCS_POLL_PLUGIN_PATH . 'includes/class-wpcs-poll-activator.php';
+        require_once WPCS_POLL_PLUGIN_PATH . 'includes/class-wpcs-poll-deactivator.php';
         require_once WPCS_POLL_PLUGIN_PATH . 'includes/class-wpcs-poll-database.php';
         require_once WPCS_POLL_PLUGIN_PATH . 'includes/class-wpcs-poll-ajax.php';
         require_once WPCS_POLL_PLUGIN_PATH . 'includes/class-wpcs-poll-shortcodes.php';
