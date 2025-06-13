@@ -12,34 +12,61 @@ if (!defined('ABSPATH')) {
 }
 
 // Values for the form fields
+// $poll_title = ''; // These are now initialized further down or within the edit block
+// $poll_description = '';
+// $poll_category = 'General';
+// $poll_options = array(array('id' => 'opt1', 'text' => ''), array('id' => 'opt2', 'text' => '')); // Default two empty options
+// $poll_tags = '';
+// $poll_is_active = 0;
+// $current_poll_id = 0; // Initialized below
+
+$is_editing = false;
+$current_poll_id = 0; // Initialize to 0
+
+// Default empty values for form fields
 $poll_title = '';
 $poll_description = '';
 $poll_category = 'General';
-$poll_options = array(array('id' => 'opt1', 'text' => ''), array('id' => 'opt2', 'text' => '')); // Default two empty options
+$poll_options = array(array('id' => 'opt_new_1', 'text' => ''), array('id' => 'opt_new_2', 'text' => '')); // Default two empty options for new poll
 $poll_tags = '';
 $poll_is_active = 0;
-$current_poll_id = 0;
 
-$is_editing = false;
+
 if (isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['poll_id'])) {
     $is_editing = true;
     $current_poll_id = absint($_GET['poll_id']);
-    // TODO: Load existing poll data using $wpcs_db->get_poll($current_poll_id)
-    // For now, we'll just simulate it for structure
-    // Example:
-    // $poll = $wpcs_db->get_poll($current_poll_id);
-    // if ($poll) {
-    //     $poll_title = $poll->title;
-    //     $poll_description = $poll->description;
-    //     $poll_category = $poll->category;
-    //     $poll_options = json_decode($poll->options, true); // Assuming options are stored as JSON
-    //     $poll_tags = $poll->tags;
-    //     $poll_is_active = $poll->is_active;
-    // } else {
-    //     echo '<div class="error"><p>' . __('Poll not found.', 'wpcs-poll') . '</p></div>';
-    //     return; // Stop if poll not found
-    // }
-    echo '<p><em>Simulating edit mode for Poll ID: ' . esc_html($current_poll_id) . '. Data would be pre-filled here.</em></p>';
+
+    if ($current_poll_id > 0) {
+        // Ensure $wpcs_db is available. It should be instantiated in poll-management.php
+        // and thus available in this included file's scope.
+        // A more robust way would be to pass $wpcs_db as an argument or ensure it's global.
+        if (!isset($wpcs_db) && class_exists('WPCS_Poll_Database')) {
+             // Fallback instantiation if not passed from parent, though not ideal.
+            $wpcs_db = new WPCS_Poll_Database();
+        } elseif (!isset($wpcs_db)) {
+            echo '<div class="error"><p>' . __('Database connection not available.', 'wpcs-poll') . '</p></div>';
+            return; // Stop if no DB connection
+        }
+
+        $poll = $wpcs_db->get_poll($current_poll_id);
+
+        if ($poll) {
+            $poll_title = $poll->title;
+            $poll_description = $poll->description;
+            $poll_category = $poll->category;
+            // $poll->options should already be an array from get_poll method
+            $poll_options = (is_array($poll->options) && !empty($poll->options)) ? $poll->options : array(array('id' => 'opt_loaded_1', 'text' => ''), array('id' => 'opt_loaded_2', 'text' => ''));
+            $poll_tags = $poll->tags;
+            $poll_is_active = $poll->is_active;
+        } else {
+            echo '<div class="error"><p>' . __('Poll not found for editing.', 'wpcs-poll') . '</p></div>';
+            // Optionally, redirect or disable the form
+            return;
+        }
+    } else {
+        echo '<div class="error"><p>' . __('Invalid Poll ID for editing.', 'wpcs-poll') . '</p></div>';
+        return; // Stop if invalid ID
+    }
 }
 
 ?>

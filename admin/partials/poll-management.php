@@ -66,20 +66,28 @@ if ('add_new' === $action || ('edit' === $action && $poll_id)) {
             </a>
         </h1>
 
-        <p><?php esc_html_e('A table listing all polls will be displayed here. This will likely use the WP_List_Table class for a native WordPress look and feel.', 'wpcs-poll'); ?></p>
-        <p><?php esc_html_e('Functionality for filtering, searching, editing, and deleting polls will be available.', 'wpcs-poll'); ?></p>
-
-        <!-- Placeholder for WP_List_Table -->
-        <form method="get">
-            <input type="hidden" name="page" value="wpcs-poll-manage" />
-            <?php
-            // Example:
-            // $poll_list_table = new WPCS_Poll_List_Table();
-            // $poll_list_table->prepare_items();
-            // $poll_list_table->display();
+        <?php
+        // Ensure the $wpcs_db variable is available from the earlier check in this file.
+        if (isset($wpcs_db) && $wpcs_db instanceof WPCS_Poll_Database) {
+            // Create an instance of our package class...
+            $poll_list_table = new WPCS_Poll_List_Table($wpcs_db);
+            // Fetch, prepare, sort, and filter our data...
+            $poll_list_table->prepare_items();
             ?>
-            <p><em>WP_List_Table will be rendered here.</em></p>
-        </form>
+            <!-- Forms are NOT created automatically, so you need to wrap the table in one to use features like bulk actions -->
+            <form method="get">
+                <!-- For plugins, we also need to ensure that the form posts back to our current page -->
+                <input type="hidden" name="page" value="<?php echo esc_attr($_REQUEST['page']); ?>" />
+                <?php
+                // Now we can render the completed list table
+                $poll_list_table->display();
+                ?>
+            </form>
+        <?php
+        } else {
+            echo '<div class="error"><p>' . __('Database connection not available. Cannot display polls.', 'wpcs-poll') . '</p></div>';
+        }
+        ?>
 
     </div>
 <?php

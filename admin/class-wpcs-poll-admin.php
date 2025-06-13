@@ -6,7 +6,13 @@ class WPCS_Poll_Admin {
     public function __construct($plugin_name, $version) {
         $this->plugin_name = $plugin_name;
         $this->version = $version;
+
+        // Ensure critical admin files are loaded
+        require_once WPCS_POLL_PLUGIN_PATH . 'admin/class-wpcs-poll-list-table.php';
+
         add_action('admin_post_wpcs_save_poll', array($this, 'handle_save_poll'));
+        add_action('admin_action_wpcs_delete_poll_action', array($this, 'handle_delete_poll'));
+        // Other hooks for admin menu, styles, scripts if not handled by the main plugin class
     }
 
     public function enqueue_styles() {
@@ -174,21 +180,45 @@ class WPCS_Poll_Admin {
         // Instantiate database class
         // This assumes WPCS_Poll_Database is loaded.
         // A better approach might be to pass it via constructor or use a service locator.
+        if (!class_exists('WPCS_Poll_Database')) {
+            // This should ideally not happen if dependencies are loaded correctly
+            wp_die(__('Critical Error: Database class not found.', 'wpcs-poll'));
+            return;
+        }
         $db = new WPCS_Poll_Database();
 
         $result = false;
         if ($poll_id > 0) {
             // Update existing poll
-            // $result = $db->update_poll($poll_id, $poll_data);
-            // For now, simulate success
-            $result = true;
+            // Note: 'created_by' and 'created_at' are not updated.
+            // 'updated_at' is handled by the update_poll method itself.
+
+            // Unset fields that are not part of the $poll_data structure for update_poll
+            // or are set by the database method itself.
+            unset($poll_data['created_by']);
+            // $poll_data already contains: title, description, category, options (JSON), tags, is_active
+
+            $result = $db->update_poll($poll_id, $poll_data);
+
+            if (is_wp_error($result)) {
+                // Handle database error from update_poll
+                // Log the error: error_log('WPCS Poll Update DB Error: ' . $result->get_error_message());
+                $error_message = $result->get_error_message();
+                wp_redirect(admin_url('admin.php?page=wpcs-poll-manage&action=edit&poll_id=' . $poll_id . '&message=error_saving_poll&details=' . urlencode($error_message)));
+                exit;
+            }
             $message_type = 'poll_updated';
         } else {
-            // Create new poll
-            // $poll_data['created_by'] = get_current_user_id();
-            // $result = $db->create_poll($poll_data);
-            // For now, simulate success and getting a new ID
-            $result = rand(1, 100);
+            // Create new poll (this part should already be updated)
+            $poll_data['created_by'] = get_current_user_id();
+            $result = $db->create_poll($poll_data);
+
+            if (is_wp_error($result)) {
+                // Handle database error from create_poll
+                $error_message = $result->get_error_message();
+                wp_redirect(admin_url('admin.php?page=wpcs-poll-manage&action=add_new&message=error_saving_poll&details=' . urlencode($error_message)));
+                exit;
+            }
             $message_type = 'poll_added';
         }
 
@@ -198,6 +228,46 @@ class WPCS_Poll_Admin {
             // Handle database error
             wp_redirect(admin_url('admin.php?page=wpcs-poll-manage&action=' . ($poll_id ? 'edit&poll_id=' . $poll_id : 'add_new') . '&message=error_saving_poll'));
         }
+        exit;
+    }
+
+    public function handle_delete_poll() {
+        // Get Poll ID and verify nonce
+        $poll_id = isset($_GET['poll_id']) ? absint($_GET['poll_id']) : 0;
+        $nonce = isset($_GET['_wpnonce']) ? sanitize_text_field($_GET['_wpnonce']) : '';
+
+        if (!$poll_id || !wp_verify_nonce($nonce, 'wpcs_delete_poll_' . $poll_id)) {
+            wp_die(__('Invalid action or security token expired.', 'wpcs-poll'), __('Error', 'wpcs-poll'), array('response' => 403));
+        }
+
+        // Check user capabilities
+        if (!current_user_can('manage_options')) { // Or a more specific capability for deleting polls
+            wp_die(__('You do not have sufficient permissions to delete this poll.', 'wpcs-poll'), __('Error', 'wpcs-poll'), array('response' => 403));
+        }
+
+        // Instantiate database class
+        if (!class_exists('WPCS_Poll_Database')) {
+            wp_die(__('Critical Error: Database class not found.', 'wpcs-poll'));
+            return;
+        }
+        $db = new WPCS_Poll_Database();
+
+        // Call delete_poll method
+        $result = $db->delete_poll($poll_id);
+
+        $redirect_url = admin_url('admin.php?page=wpcs-poll-manage');
+
+        if ($result && !is_wp_error($result)) {
+            $redirect_url = add_query_arg('message', 'poll_deleted', $redirect_url);
+        } else {
+            $error_details = is_wp_error($result) ? $result->get_error_message() : __('Unknown error during deletion.', 'wpcs-poll');
+            $redirect_url = add_query_arg(array(
+                'message' => 'error_deleting_poll',
+                'details' => urlencode($error_details)
+            ), $redirect_url);
+        }
+
+        wp_redirect($redirect_url);
         exit;
     }
 }

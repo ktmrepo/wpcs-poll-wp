@@ -19,31 +19,247 @@ class WPCS_Poll_Database {
 
     // Poll CRUD operations
     public function create_poll($data) {
-        // TODO: Implement poll creation
-        // $data should be an array with keys: title, description, category, options (JSON), tags, created_by
-        // Returns new poll ID or WP_Error
+        if (empty($data['title']) || !isset($data['options']) || empty($data['created_by'])) {
+            return new WP_Error('missing_data', __('Missing required data: title, options, or created_by.', 'wpcs-poll'));
+        }
+
+        $defaults = array(
+            'description' => null,
+            'category' => 'General',
+            'tags' => null,
+            'is_active' => 0,
+            'created_at' => current_time('mysql', 1), // GMT
+            'updated_at' => current_time('mysql', 1), // GMT
+        );
+        $data = wp_parse_args($data, $defaults);
+
+        $formats = array(
+            '%s', // title
+            '%s', // description
+            '%s', // category
+            '%s', // options (JSON string)
+            '%s', // tags
+            '%d', // is_active
+            '%d', // created_by
+            '%s', // created_at
+            '%s', // updated_at
+        );
+
+        // Ensure options are JSON encoded if they are not already a string
+        if (is_array($data['options']) || is_object($data['options'])) {
+            $data['options'] = wp_json_encode($data['options']);
+            if ($data['options'] === false) {
+                 return new WP_Error('json_encode_failed', __('Failed to encode options to JSON.', 'wpcs-poll'));
+            }
+        } elseif (!is_string($data['options']) || !json_decode($data['options'])) {
+             return new WP_Error('invalid_options_format', __('Options must be a valid JSON string or an array/object.', 'wpcs-poll'));
+        }
+
+
+        $insert_data = array(
+            'title' => $data['title'],
+            'description' => $data['description'],
+            'category' => $data['category'],
+            'options' => $data['options'],
+            'tags' => $data['tags'],
+            'is_active' => $data['is_active'],
+            'created_by' => $data['created_by'],
+            'created_at' => $data['created_at'],
+            'updated_at' => $data['updated_at'],
+        );
+
+        $result = $this->wpdb->insert($this->table_polls, $insert_data, $formats);
+
+        if ($result === false) {
+            return new WP_Error('db_insert_error', __('Failed to insert poll into the database.', 'wpcs-poll'), $this->wpdb->last_error);
+        }
+
+        return $this->wpdb->insert_id;
     }
 
     public function get_poll($poll_id) {
-        // TODO: Implement fetching a single poll
-        // Returns poll object or null
+        if (empty($poll_id)) {
+            return null;
+        }
+
+        $poll_id = absint($poll_id);
+        if ($poll_id <= 0) {
+            return null;
+        }
+
+        $sql = $this->wpdb->prepare("SELECT * FROM {$this->table_polls} WHERE id = %d", $poll_id);
+        $poll = $this->wpdb->get_row($sql, OBJECT);
+
+        if (empty($poll)) {
+            return null;
+        }
+
+        // Decode JSON options
+        if (isset($poll->options)) {
+            $decoded_options = json_decode($poll->options, true);
+            // If json_decode fails, it returns null.
+            // It might be better to return the raw string or handle error.
+            // For consistency with get_polls, we'll assign it.
+            $poll->options = $decoded_options === null ? $poll->options : $decoded_options;
+        }
+
+        return $poll; // Returns poll object (stdClass) or null
     }
 
     public function get_polls($args = array()) {
         // TODO: Implement fetching multiple polls with optional filters/pagination
         // $args could include: category, tags, is_active, created_by, search_term, orderby, order, posts_per_page, offset
-        // Returns array of poll objects or empty array
+
+        // For now, a simple query to get all polls, ordered by creation date
+        $sql = "SELECT * FROM {$this->table_polls} ORDER BY created_at DESC";
+
+        $results = $this->wpdb->get_results($sql, OBJECT);
+
+        if ($results === null) {
+            // $wpdb->get_results returns null on error.
+            return new WP_Error('db_query_error', __('Failed to retrieve polls from the database.', 'wpcs-poll'), $this->wpdb->last_error);
+        }
+
+        // Decode JSON options for each poll
+        if (!empty($results)) {
+            foreach ($results as $key => $poll) {
+                if (isset($poll->options)) {
+                    $decoded_options = json_decode($poll->options, true);
+                    // If json_decode fails, it returns null. Check for this.
+                    // It might be better to leave it as a string if it's invalid JSON,
+                    // or handle the error more robustly.
+                    $results[$key]->options = $decoded_options === null ? $poll->options : $decoded_options;
+                }
+            }
+        }
+
+        return $results; // Returns array of poll objects (stdClass) or empty array
     }
 
     public function update_poll($poll_id, $data) {
-        // TODO: Implement poll update
-        // $data should be an array with fields to update
-        // Returns true on success, false or WP_Error on failure
+        $poll_id = absint($poll_id);
+        if ($poll_id <= 0) {
+            return new WP_Error('invalid_poll_id', __('Invalid Poll ID provided for update.', 'wpcs-poll'));
+        }
+
+        // Ensure there's data to update
+        if (empty($data)) {
+            return new WP_Error('no_data_to_update', __('No data provided for poll update.', 'wpcs-poll'));
+        }
+
+        // Prepare data and formats for $wpdb->update
+        $update_data = array();
+        $update_formats = array();
+
+        // Title (required for creation, optional for update but usually present)
+        if (isset($data['title'])) {
+            if (empty($data['title'])) {
+                return new WP_Error('empty_title', __('Poll title cannot be empty.', 'wpcs-poll'));
+            }
+            $update_data['title'] = $data['title'];
+            $update_formats[] = '%s';
+        }
+
+        if (isset($data['description'])) {
+            $update_data['description'] = $data['description'];
+            $update_formats[] = '%s';
+        }
+
+        if (isset($data['category'])) {
+            $update_data['category'] = $data['category'];
+            $update_formats[] = '%s';
+        }
+
+        if (isset($data['options'])) {
+            if (is_array($data['options']) || is_object($data['options'])) {
+                $json_options = wp_json_encode($data['options']);
+                if ($json_options === false) {
+                    return new WP_Error('json_encode_failed', __('Failed to encode options to JSON for update.', 'wpcs-poll'));
+                }
+                $update_data['options'] = $json_options;
+            } elseif (is_string($data['options']) && json_decode($data['options']) !== null) {
+                $update_data['options'] = $data['options']; // Assume valid JSON string
+            } else {
+                return new WP_Error('invalid_options_format', __('Options must be a valid JSON string or an array/object for update.', 'wpcs-poll'));
+            }
+            $update_formats[] = '%s';
+        }
+
+        if (isset($data['tags'])) {
+            $update_data['tags'] = $data['tags'];
+            $update_formats[] = '%s';
+        }
+
+        if (isset($data['is_active'])) {
+            $update_data['is_active'] = absint($data['is_active']);
+            $update_formats[] = '%d';
+        }
+
+        // Always update the 'updated_at' timestamp
+        $update_data['updated_at'] = current_time('mysql', 1); // GMT
+        $update_formats[] = '%s';
+
+
+        // If no updatable fields were actually provided (besides updated_at)
+        if (count($update_data) <= 1 && isset($update_data['updated_at'])) {
+             // Or just return true if only updated_at was set, indicating no other changes.
+            // For now, let's consider it an edge case that might not need an error.
+            // return new WP_Error('no_fields_to_update', __('No specific fields were provided for update.', 'wpcs-poll'));
+        }
+        if (empty($update_data)){
+            return true; // Nothing to update
+        }
+
+
+        $result = $this->wpdb->update(
+            $this->table_polls,
+            $update_data,
+            array('id' => $poll_id), // WHERE condition
+            $update_formats,        // Formats for $update_data
+            array('%d')             // Format for WHERE condition
+        );
+
+        if ($result === false) {
+            // This means the query failed.
+            return new WP_Error('db_update_error', __('Failed to update poll in the database.', 'wpcs-poll'), $this->wpdb->last_error);
+        }
+
+        // $wpdb->update returns the number of rows affected, or false on error.
+        // If 0 rows were affected but no error, it means the data was the same.
+        // We can consider this a success.
+        return true;
     }
 
     public function delete_poll($poll_id) {
-        // TODO: Implement poll deletion
-        // Returns true on success, false or WP_Error on failure
+        $poll_id = absint($poll_id);
+        if ($poll_id <= 0) {
+            return new WP_Error('invalid_poll_id', __('Invalid Poll ID provided for deletion.', 'wpcs-poll'));
+        }
+
+        // TODO: Consider related data deletion (e.g., votes, bookmarks associated with this poll).
+        // This depends on desired behavior (cascade delete, keep orphaned data, or configurable).
+        // For now, we will only delete the poll itself.
+
+        $result = $this->wpdb->delete(
+            $this->table_polls,
+            array('id' => $poll_id), // WHERE condition
+            array('%d')             // Format for WHERE condition
+        );
+
+        if ($result === false) {
+            // This means the query failed.
+            return new WP_Error('db_delete_error', __('Failed to delete poll from the database.', 'wpcs-poll'), $this->wpdb->last_error);
+        }
+
+        if ($result === 0) {
+            // This means no rows were affected, which implies the poll_id didn't exist.
+            // Depending on desired strictness, this could be an error or just a non-event.
+            // For robustness, let's treat it as if the poll was already gone or never there.
+            return new WP_Error('poll_not_found_for_delete', __('Poll not found for deletion, or already deleted.', 'wpcs-poll'));
+        }
+
+        // $wpdb->delete returns the number of rows affected, or false on error.
+        return true; // Successfully deleted one or more rows (should be 1).
     }
 
     // Vote management
