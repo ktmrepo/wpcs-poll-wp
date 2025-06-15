@@ -23,25 +23,31 @@ if (!defined('ABSPATH')) {
     </p>
 
     <?php
-    // TODO: Implement WP_List_Table for users, showing:
-    // - Username
-    // - Email
-    // - WordPress Role(s)
-    // - WPCS Poll Role (editable)
-    // - Number of polls created (if applicable)
-    // - Number of votes cast
+    // Ensure the WPCS_Poll_User_List_Table class is available (it should be loaded by WPCS_Poll_Admin)
+    if (class_exists('WPCS_Poll_User_List_Table')) {
+        // Create an instance of our package class...
+        $user_list_table = new WPCS_Poll_User_List_Table();
+        // Fetch, prepare, sort, and filter our data...
+        $user_list_table->prepare_items();
+        ?>
+        <!-- Forms are NOT created automatically, so you need to wrap the table in one to use features like bulk actions -->
+        <!-- For role updates, we might use AJAX or a form that posts to admin-post.php -->
+        <form method="post" id="wpcs-user-management-form">
+            <!-- For plugins, we also need to ensure that the form posts back to our current page -->
+            <input type="hidden" name="page" value="<?php echo esc_attr($_REQUEST['page']); ?>" />
+            <?php
+            // Potentially add nonce fields here if we were to submit this form for bulk role changes.
+            // For individual role changes via AJAX or separate actions, this form might not be strictly needed for submission.
 
-    // Example:
-    // if (!class_exists('WPCS_Poll_User_List_Table')) {
-    //     require_once WPCS_POLL_PLUGIN_PATH . 'admin/class-wpcs-poll-user-list-table.php'; // To be created
-    // }
-    // $user_list_table = new WPCS_Poll_User_List_Table();
-    // $user_list_table->prepare_items();
-    // $user_list_table->display();
+            // Now we can render the completed list table
+            $user_list_table->display();
+            ?>
+        </form>
+    <?php
+    } else {
+        echo '<div class="error"><p>' . __('User List Table class not found. Please ensure it is loaded correctly.', 'wpcs-poll') . '</p></div>';
+    }
     ?>
-    <p><em><?php esc_html_e('User list table (WP_List_Table for users) placeholder.', 'wpcs-poll'); ?></em></p>
-    <p><em><?php esc_html_e('This table would display users along with their WPCS Poll specific role (e.g., "user" or "admin" for plugin features) and allow modification of this role.', 'wpcs-poll'); ?></em></p>
-    <p><em><?php esc_html_e('The "WPCS Poll Role" is stored in user meta (wpcs_poll_role) and was added during plugin activation.', 'wpcs-poll'); ?></em></p>
 
     <h2><?php esc_html_e('Notes on WPCS Poll Roles:', 'wpcs-poll'); ?></h2>
     <ul>

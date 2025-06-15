@@ -77,46 +77,71 @@ class WPCS_Poll_List_Table extends WP_List_Table {
     //     );
     // }
 
-    // Optional: For sorting
-    // protected function get_sortable_columns() {
-    //     $sortable_columns = array(
-    //         'title'    => array('title', false),
-    //         'category' => array('category', false),
-    //         'created_at' => array('created_at', true) // True means it's already sorted by this column
-    //     );
-    //     return $sortable_columns;
-    // }
+    protected function get_sortable_columns() {
+        $sortable_columns = array(
+            'title'    => array('title', false), // True if a default sorted column
+            'category' => array('category', false),
+            'is_active'=> array('is_active', false),
+            'created_at' => array('created_at', true) // Default sort by created_at
+        );
+        return $sortable_columns;
+    }
 
     public function prepare_items() {
         $columns = $this->get_columns();
         $hidden = array();
-        $sortable = $this->get_sortable_columns(); // Using WP_List_Table's default or our override
+        $sortable = $this->get_sortable_columns();
         $this->_column_headers = array($columns, $hidden, $sortable);
 
-        // TODO: Implement pagination
-        $per_page = 20;
-        $current_page = $this->get_pagenum();
-        // $total_items = $this->db->get_polls_count(); // Need a method for this
-
-        // Fetch the data
-        $data = $this->db->get_polls(array(
-            // 'posts_per_page' => $per_page,
-            // 'offset' => ($current_page - 1) * $per_page
-        ));
-
-        if (is_wp_error($data)) {
-            // Handle error, maybe display a message
-            $this->items = array();
-            // Example: add_action('admin_notices', function() use ($data) {
-            //     echo '<div class="error"><p>' . esc_html($data->get_error_message()) . '</p></div>';
-            // });
-        } else {
-            $this->items = $data;
+        // Sorting parameters
+        $orderby = 'created_at'; // Default orderby
+        if (!empty($_REQUEST['orderby']) && array_key_exists($_REQUEST['orderby'], $sortable)) {
+            // Ensure the orderby value is a key in $sortable to prevent SQL injection
+            $orderby = sanitize_key($_REQUEST['orderby']);
         }
 
-        // $this->set_pagination_args(array(
-        //     'total_items' => $total_items,
-        //     'per_page'    => $per_page
-        // ));
+        $order = 'DESC'; // Default order
+        if (!empty($_REQUEST['order']) && in_array(strtoupper($_REQUEST['order']), array('ASC', 'DESC'))) {
+            $order = strtoupper($_REQUEST['order']);
+        }
+
+        // Pagination parameters
+        $per_page = $this->get_items_per_page('polls_per_page', 20);
+        $current_page = $this->get_pagenum();
+        $offset = ($current_page - 1) * $per_page;
+
+        // Get total items count
+        $total_items_result = $this->db->get_polls_count(); // TODO: Pass filter args if any
+
+        if (is_wp_error($total_items_result)) {
+            $total_items = 0;
+            // Optionally add an admin notice here for the error
+            // error_log("Error fetching polls count: " . $total_items_result->get_error_message());
+        } else {
+            $total_items = $total_items_result;
+        }
+
+        $this->set_pagination_args(array(
+            'total_items' => $total_items,
+            'per_page'    => $per_page,
+            'total_pages' => ceil($total_items / $per_page)
+        ));
+
+        // Fetch the data for the current page
+        $db_args = array(
+            'orderby' => $orderby,
+            'order' => $order,
+            'posts_per_page' => $per_page,
+            'offset' => $offset,
+            // TODO: Pass filter args if any
+        );
+
+        $this->items = $this->db->get_polls($db_args);
+
+        if (is_wp_error($this->items)) {
+            // Optionally add an admin notice here for the error
+            // error_log("Error fetching polls for list table: " . $this->items->get_error_message());
+            $this->items = array(); // Ensure items is an array if error
+        }
     }
 }

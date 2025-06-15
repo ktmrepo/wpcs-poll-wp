@@ -107,33 +107,81 @@ class WPCS_Poll_Database {
     }
 
     public function get_polls($args = array()) {
-        // TODO: Implement fetching multiple polls with optional filters/pagination
-        // $args could include: category, tags, is_active, created_by, search_term, orderby, order, posts_per_page, offset
+        $defaults = array(
+            'orderby' => 'created_at',
+            'order'   => 'DESC',
+            'posts_per_page' => -1, // -1 for all, or a number for pagination
+            'offset' => 0,
+            // Future filtering args:
+            // 'is_active' => null,
+            // 'category' => '',
+            // 'search' => '',
+        );
+        $args = wp_parse_args($args, $defaults);
 
-        // For now, a simple query to get all polls, ordered by creation date
-        $sql = "SELECT * FROM {$this->table_polls} ORDER BY created_at DESC";
+        // Validate orderby column
+        $allowed_orderby_columns = array('id', 'title', 'category', 'is_active', 'created_at', 'updated_at');
+        if (!in_array($args['orderby'], $allowed_orderby_columns)) {
+            $args['orderby'] = 'created_at';
+        }
+
+        // Validate order direction
+        if (!in_array(strtoupper($args['order']), array('ASC', 'DESC'))) {
+            $args['order'] = 'DESC';
+        }
+
+        // Base SQL
+        $sql = "SELECT * FROM {$this->table_polls}";
+
+        // TODO: Add WHERE clauses for filtering
+
+        // Add ORDER BY
+        $sql .= " ORDER BY {$args['orderby']} {$args['order']}";
+
+        // Add LIMIT and OFFSET for pagination
+        if ($args['posts_per_page'] > 0) {
+            $sql .= $this->wpdb->prepare(" LIMIT %d OFFSET %d", absint($args['posts_per_page']), absint($args['offset']));
+        }
 
         $results = $this->wpdb->get_results($sql, OBJECT);
 
         if ($results === null) {
-            // $wpdb->get_results returns null on error.
             return new WP_Error('db_query_error', __('Failed to retrieve polls from the database.', 'wpcs-poll'), $this->wpdb->last_error);
         }
 
-        // Decode JSON options for each poll
         if (!empty($results)) {
             foreach ($results as $key => $poll) {
                 if (isset($poll->options)) {
                     $decoded_options = json_decode($poll->options, true);
-                    // If json_decode fails, it returns null. Check for this.
-                    // It might be better to leave it as a string if it's invalid JSON,
-                    // or handle the error more robustly.
                     $results[$key]->options = $decoded_options === null ? $poll->options : $decoded_options;
                 }
             }
         }
 
-        return $results; // Returns array of poll objects (stdClass) or empty array
+        return $results;
+    }
+
+    public function get_polls_count($args = array()) {
+        // Args for filtering, similar to get_polls but without pagination/ordering
+        // For now, we'll just count all polls.
+        // TODO: Add WHERE clauses for filtering (is_active, category, search)
+        // to make this count accurate with filters applied in get_polls.
+
+        $sql = "SELECT COUNT(id) FROM {$this->table_polls}";
+
+        // Example for future filtering:
+        // $where_clauses = array();
+        // if (isset($args['is_active'])) { $where_clauses[] = $this->wpdb->prepare("is_active = %d", $args['is_active']); }
+        // if (!empty($where_clauses)) { $sql .= " WHERE " . implode(" AND ", $where_clauses); }
+
+        $count = $this->wpdb->get_var($sql);
+
+        if ($count === null) {
+            // This indicates an error in the query.
+            return new WP_Error('db_count_error', __('Failed to count polls in the database.', 'wpcs-poll'), $this->wpdb->last_error);
+        }
+
+        return absint($count);
     }
 
     public function update_poll($poll_id, $data) {
@@ -312,14 +360,77 @@ class WPCS_Poll_Database {
 
     // Bulk upload management
     public function log_bulk_upload($data) {
-        // TODO: Implement logging a new bulk upload task
-        // $data should include: user_id, filename, total_records
-        // Returns new bulk upload ID or WP_Error
+        if (empty($data['user_id']) || empty($data['filename'])) {
+            return new WP_Error('missing_bulk_upload_data', __('Missing required data for logging bulk upload: user_id, filename.', 'wpcs-poll'));
+        }
+
+        $defaults = array(
+            'total_records' => 0,
+            'successful_imports' => 0,
+            'failed_imports' => 0,
+            'status' => 'pending', // e.g., pending, processing, completed, failed
+            'error_log' => null,
+            'created_at' => current_time('mysql', 1), // GMT
+        );
+        $data = wp_parse_args($data, $defaults);
+
+        $insert_data = array(
+            'user_id' => absint($data['user_id']),
+            'filename' => sanitize_file_name($data['filename']),
+            'total_records' => absint($data['total_records']),
+            'successful_imports' => absint($data['successful_imports']),
+            'failed_imports' => absint($data['failed_imports']),
+            'status' => sanitize_text_field($data['status']),
+            'error_log' => is_string($data['error_log']) ? $data['error_log'] : null,
+            'created_at' => $data['created_at'],
+        );
+
+        $formats = array('%d', '%s', '%d', '%d', '%d', '%s', '%s', '%s');
+
+        $result = $this->wpdb->insert($this->table_bulk_uploads, $insert_data, $formats);
+
+        if ($result === false) {
+            return new WP_Error('db_insert_error_bulk_log', __('Failed to log bulk upload task.', 'wpcs-poll'), $this->wpdb->last_error);
+        }
+        return $this->wpdb->insert_id;
     }
 
     public function update_bulk_upload_status($upload_id, $status, $successful_imports = null, $failed_imports = null, $error_log = null) {
-        // TODO: Implement updating the status and details of a bulk upload task
-        // Returns true on success, false or WP_Error on failure
+        $upload_id = absint($upload_id);
+        if ($upload_id <= 0) {
+            return new WP_Error('invalid_upload_id', __('Invalid Upload ID provided for status update.', 'wpcs-poll'));
+        }
+
+        $update_data = array('status' => sanitize_text_field($status));
+        $update_formats = array('%s');
+
+        if ($successful_imports !== null) {
+            $update_data['successful_imports'] = absint($successful_imports);
+            $update_formats[] = '%d';
+        }
+        if ($failed_imports !== null) {
+            $update_data['failed_imports'] = absint($failed_imports);
+            $update_formats[] = '%d';
+        }
+        if ($error_log !== null) {
+            $update_data['error_log'] = is_string($error_log) ? $error_log : wp_json_encode($error_log); // Store complex errors as JSON
+            $update_formats[] = '%s';
+        }
+
+        // Prevent updating other fields like total_records or filename here.
+
+        $result = $this->wpdb->update(
+            $this->table_bulk_uploads,
+            $update_data,
+            array('id' => $upload_id),
+            $update_formats,
+            array('%d')
+        );
+
+        if ($result === false) {
+            return new WP_Error('db_update_error_bulk_log', __('Failed to update bulk upload task status.', 'wpcs-poll'), $this->wpdb->last_error);
+        }
+        return true;
     }
 
     public function get_bulk_upload_log($upload_id) {
