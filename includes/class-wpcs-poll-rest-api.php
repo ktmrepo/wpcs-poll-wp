@@ -110,13 +110,38 @@ class WPCS_Poll_REST_API {
 
             // Process polls data for frontend
             foreach ($polls as &$poll) {
-                // Ensure options is an array
+                // Ensure options is properly formatted
                 if (is_string($poll->options)) {
-                    $poll->options = json_decode($poll->options, true);
-                }
-                if (!is_array($poll->options)) {
+                    $decoded_options = json_decode($poll->options, true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded_options)) {
+                        $poll->options = $decoded_options;
+                    } else {
+                        $poll->options = array();
+                    }
+                } elseif (!is_array($poll->options)) {
                     $poll->options = array();
                 }
+
+                // Ensure each option has the required structure
+                $processed_options = array();
+                foreach ($poll->options as $index => $option) {
+                    if (is_string($option)) {
+                        // Convert string option to proper format
+                        $processed_options[] = array(
+                            'id' => 'option_' . ($index + 1),
+                            'text' => $option,
+                            'votes' => 0
+                        );
+                    } elseif (is_array($option)) {
+                        // Ensure option has all required fields
+                        $processed_options[] = array(
+                            'id' => isset($option['id']) ? $option['id'] : 'option_' . ($index + 1),
+                            'text' => isset($option['text']) ? $option['text'] : (isset($option['option_text']) ? $option['option_text'] : 'Option ' . ($index + 1)),
+                            'votes' => isset($option['votes']) ? intval($option['votes']) : (isset($option['vote_count']) ? intval($option['vote_count']) : 0)
+                        );
+                    }
+                }
+                $poll->options = $processed_options;
 
                 // Add user vote information
                 $poll->user_vote = null;
@@ -131,7 +156,7 @@ class WPCS_Poll_REST_API {
                 // Calculate total votes
                 $poll->total_votes = 0;
                 foreach ($poll->options as $option) {
-                    $poll->total_votes += isset($option['votes']) ? intval($option['votes']) : 0;
+                    $poll->total_votes += intval($option['votes']);
                 }
 
                 // Add creator name
@@ -148,11 +173,19 @@ class WPCS_Poll_REST_API {
                 } else {
                     $poll->tags = array();
                 }
+
+                // Ensure all required fields are present
+                $poll->id = intval($poll->id);
+                $poll->title = strval($poll->title);
+                $poll->description = strval($poll->description);
+                $poll->category = strval($poll->category);
+                $poll->is_active = intval($poll->is_active);
             }
 
             return rest_ensure_response($polls);
 
         } catch (Exception $e) {
+            error_log('WPCS Poll REST API Error: ' . $e->getMessage());
             return new WP_Error('fetch_error', 'Failed to fetch polls: ' . $e->getMessage(), array('status' => 500));
         }
     }
@@ -171,6 +204,18 @@ class WPCS_Poll_REST_API {
 
             if (!$poll) {
                 return new WP_Error('poll_not_found', 'Poll not found', array('status' => 404));
+            }
+
+            // Process options similar to get_polls
+            if (is_string($poll->options)) {
+                $decoded_options = json_decode($poll->options, true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded_options)) {
+                    $poll->options = $decoded_options;
+                } else {
+                    $poll->options = array();
+                }
+            } elseif (!is_array($poll->options)) {
+                $poll->options = array();
             }
 
             // Add user vote information
@@ -202,6 +247,7 @@ class WPCS_Poll_REST_API {
             return rest_ensure_response($poll);
 
         } catch (Exception $e) {
+            error_log('WPCS Poll REST API Error: ' . $e->getMessage());
             return new WP_Error('fetch_error', 'Failed to fetch poll: ' . $e->getMessage(), array('status' => 500));
         }
     }

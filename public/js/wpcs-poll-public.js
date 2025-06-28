@@ -138,27 +138,47 @@ class WPCSPollContainer {
   }
 
   renderPollOptions(poll) {
-    const options = Array.isArray(poll.options) ? poll.options : [];
+    // Handle different formats of poll.options
+    let options = [];
+    
+    if (typeof poll.options === 'string') {
+      try {
+        options = JSON.parse(poll.options);
+      } catch (e) {
+        console.error('Failed to parse poll options JSON:', e);
+        options = [];
+      }
+    } else if (Array.isArray(poll.options)) {
+      options = poll.options;
+    } else if (poll.options && typeof poll.options === 'object') {
+      // If it's already an object, convert to array
+      options = Object.values(poll.options);
+    }
+
     const totalVotes = this.getTotalVotes(poll);
     const userVote = poll.user_vote;
 
-    if (options.length === 0) {
+    if (!Array.isArray(options) || options.length === 0) {
       return '<p class="no-options">No options available</p>';
     }
 
     return options
       .map((option) => {
-        const voteCount = option.votes || 0;
+        // Handle different option formats
+        const optionId = option.id || option.option_id || `option_${Math.random()}`;
+        const optionText = option.text || option.option_text || option.title || 'Unknown option';
+        const voteCount = parseInt(option.votes || option.vote_count || 0);
+        
         const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
-        const isSelected = userVote === option.id;
+        const isSelected = userVote === optionId;
         const showResults = userVote !== null;
 
         return `
                 <div class="poll-option ${isSelected ? "selected" : ""} ${showResults ? "show-results" : ""}" 
-                     data-option-id="${option.id}" 
-                     onclick="wpcsVoteOnPoll(${poll.id}, '${option.id}')">
+                     data-option-id="${optionId}" 
+                     onclick="wpcsVoteOnPoll(${poll.id}, '${optionId}')">
                     <div class="option-content">
-                        <span class="option-text">${this.escapeHtml(option.text)}</span>
+                        <span class="option-text">${this.escapeHtml(optionText)}</span>
                         ${showResults ? `<span class="option-percentage">${percentage.toFixed(1)}%</span>` : ''}
                     </div>
                     ${showResults ? `
@@ -174,6 +194,7 @@ class WPCSPollContainer {
   }
 
   escapeHtml(text) {
+    if (!text) return '';
     const map = {
       '&': '&amp;',
       '<': '&lt;',
@@ -181,7 +202,7 @@ class WPCSPollContainer {
       '"': '&quot;',
       "'": '&#039;'
     };
-    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+    return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
   }
 
   setupAutoplay() {
@@ -288,8 +309,28 @@ class WPCSPollContainer {
   }
 
   getTotalVotes(poll) {
-    const options = Array.isArray(poll.options) ? poll.options : [];
-    return options.reduce((total, option) => total + (option.votes || 0), 0);
+    let options = [];
+    
+    if (typeof poll.options === 'string') {
+      try {
+        options = JSON.parse(poll.options);
+      } catch (e) {
+        options = [];
+      }
+    } else if (Array.isArray(poll.options)) {
+      options = poll.options;
+    } else if (poll.options && typeof poll.options === 'object') {
+      options = Object.values(poll.options);
+    }
+
+    if (!Array.isArray(options)) {
+      return 0;
+    }
+
+    return options.reduce((total, option) => {
+      const votes = parseInt(option.votes || option.vote_count || 0);
+      return total + votes;
+    }, 0);
   }
 }
 
