@@ -17,6 +17,12 @@ $category = isset($atts['category']) ? $atts['category'] : 'all';
 $limit = isset($atts['limit']) ? intval($atts['limit']) : 10;
 $autoplay = isset($atts['autoplay']) ? $atts['autoplay'] === 'true' : false;
 $show_navigation = isset($atts['show_navigation']) ? $atts['show_navigation'] === 'true' : true;
+
+// Debug information
+if (defined('WP_DEBUG') && WP_DEBUG) {
+    echo "<!-- WPCS Poll Debug: REST URL = " . rest_url('wpcs-poll/v1/') . " -->";
+    echo "<!-- WPCS Poll Debug: AJAX URL = " . admin_url('admin-ajax.php') . " -->";
+}
 ?>
 
 <div id="<?php echo esc_attr($container_id); ?>" 
@@ -32,7 +38,8 @@ $show_navigation = isset($atts['show_navigation']) ? $atts['show_navigation'] ==
     </div>
     
     <div class="wpcs-polls-error" style="display: none;">
-        <p><?php _e('Failed to load polls. Please try again.', 'wpcs-poll'); ?></p>
+        <h3><?php _e('Failed to Load Polls', 'wpcs-poll'); ?></h3>
+        <p><?php _e('We couldn\'t load the polls right now. Please try again.', 'wpcs-poll'); ?></p>
         <button class="retry-btn"><?php _e('Retry', 'wpcs-poll'); ?></button>
     </div>
 </div>
@@ -45,16 +52,23 @@ $show_navigation = isset($atts['show_navigation']) ? $atts['show_navigation'] ==
     justify-content: center;
     height: 300px;
     color: #666;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 20px;
+}
+
+.wpcs-polls-loading p {
+    color: white;
+    margin-top: 15px;
+    font-size: 16px;
 }
 
 .loading-spinner {
     width: 40px;
     height: 40px;
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #0073aa;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top: 4px solid #ffffff;
     border-radius: 50%;
     animation: spin 1s linear infinite;
-    margin-bottom: 15px;
 }
 
 @keyframes spin {
@@ -65,7 +79,19 @@ $show_navigation = isset($atts['show_navigation']) ? $atts['show_navigation'] ==
 .wpcs-polls-error {
     text-align: center;
     padding: 40px;
-    color: #d63638;
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+    border-radius: 20px;
+}
+
+.wpcs-polls-error h3 {
+    margin: 0 0 15px 0;
+    color: #721c24;
+}
+
+.wpcs-polls-error p {
+    margin: 0 0 20px 0;
 }
 
 .retry-btn {
@@ -75,10 +101,37 @@ $show_navigation = isset($atts['show_navigation']) ? $atts['show_navigation'] ==
     padding: 10px 20px;
     border-radius: 4px;
     cursor: pointer;
-    margin-top: 10px;
+    font-size: 14px;
+    transition: background-color 0.2s ease;
 }
 
 .retry-btn:hover {
     background: #005a87;
+}
+
+.no-polls-message {
+    text-align: center;
+    padding: 60px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 20px;
+}
+
+.no-polls-message h3 {
+    margin: 0 0 15px 0;
+    font-size: 24px;
+}
+
+.no-polls-message p {
+    margin: 0;
+    font-size: 16px;
+    opacity: 0.9;
+}
+
+.no-options {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.7);
+    font-style: italic;
+    padding: 20px;
 }
 </style>

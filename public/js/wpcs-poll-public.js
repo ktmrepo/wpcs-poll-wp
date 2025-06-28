@@ -20,31 +20,47 @@ class WPCSPollContainer {
     const category = this.container.dataset.category || "all";
     const limit = this.container.dataset.limit || 10;
 
+    // Show loading state
+    this.showLoading();
+
     fetch(`${wpcs_poll_ajax.rest_url}polls?category=${category}&limit=${limit}`)
-      .then((response) => response.json())
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+      })
       .then((polls) => {
-        this.polls = polls;
+        console.log('Polls loaded:', polls);
+        this.polls = polls || [];
         this.renderPolls();
       })
       .catch((error) => {
         console.error("Error loading polls:", error);
-        this.showError();
+        this.showError(error.message);
       });
   }
 
-  showError() {
-    this.container.querySelector('.wpcs-polls-loading').style.display = 'none';
-    this.container.querySelector('.wpcs-polls-error').style.display = 'block';
+  showLoading() {
+    this.container.innerHTML = `
+      <div class="wpcs-polls-loading">
+        <div class="loading-spinner"></div>
+        <p>Loading polls...</p>
+      </div>
+    `;
+  }
+
+  showError(errorMessage = '') {
+    this.container.innerHTML = `
+      <div class="wpcs-polls-error">
+        <h3>Failed to Load Polls</h3>
+        <p>We couldn't load the polls right now. ${errorMessage ? `Error: ${errorMessage}` : 'Please try again.'}</p>
+        <button class="retry-btn" onclick="this.parentNode.parentNode.wpcsContainer.loadPolls()">Retry</button>
+      </div>
+    `;
     
-    // Add retry functionality
-    const retryBtn = this.container.querySelector('.retry-btn');
-    if (retryBtn) {
-      retryBtn.addEventListener('click', () => {
-        this.container.querySelector('.wpcs-polls-error').style.display = 'none';
-        this.container.querySelector('.wpcs-polls-loading').style.display = 'flex';
-        this.loadPolls();
-      });
-    }
+    // Store reference for retry
+    this.container.wpcsContainer = this;
   }
 
   renderPolls() {
@@ -52,7 +68,7 @@ class WPCSPollContainer {
       this.container.innerHTML = `
         <div class="no-polls-message">
           <h3>No Polls Available</h3>
-          <p>There are no polls to display at the moment.</p>
+          <p>There are no polls to display at the moment. Check back later!</p>
         </div>
       `;
       return;
@@ -65,20 +81,18 @@ class WPCSPollContainer {
                  data-poll-id="${poll.id}" 
                  data-index="${index}">
                 <div class="poll-content">
-                    <h3 class="poll-title">${poll.title}</h3>
+                    <h3 class="poll-title">${this.escapeHtml(poll.title)}</h3>
                     ${
                       poll.description
-                        ? `<p class="poll-description">${poll.description}</p>`
+                        ? `<p class="poll-description">${this.escapeHtml(poll.description)}</p>`
                         : ""
                     }
                     <div class="poll-options">
                         ${this.renderPollOptions(poll)}
                     </div>
                     <div class="poll-meta">
-                        <span class="poll-category">${poll.category}</span>
-                        <span class="poll-votes">${this.getTotalVotes(
-                          poll
-                        )} votes</span>
+                        <span class="poll-category">${this.escapeHtml(poll.category)}</span>
+                        <span class="poll-votes">${this.getTotalVotes(poll)} votes</span>
                     </div>
                 </div>
             </div>
@@ -124,9 +138,13 @@ class WPCSPollContainer {
   }
 
   renderPollOptions(poll) {
-    const options = Array.isArray(poll.options) ? poll.options : JSON.parse(poll.options || '[]');
+    const options = Array.isArray(poll.options) ? poll.options : [];
     const totalVotes = this.getTotalVotes(poll);
-    const userVote = this.getUserVote(poll.id);
+    const userVote = poll.user_vote;
+
+    if (options.length === 0) {
+      return '<p class="no-options">No options available</p>';
+    }
 
     return options
       .map((option) => {
@@ -140,7 +158,7 @@ class WPCSPollContainer {
                      data-option-id="${option.id}" 
                      onclick="wpcsVoteOnPoll(${poll.id}, '${option.id}')">
                     <div class="option-content">
-                        <span class="option-text">${option.text}</span>
+                        <span class="option-text">${this.escapeHtml(option.text)}</span>
                         ${showResults ? `<span class="option-percentage">${percentage.toFixed(1)}%</span>` : ''}
                     </div>
                     ${showResults ? `
@@ -153,6 +171,17 @@ class WPCSPollContainer {
             `;
       })
       .join("");
+  }
+
+  escapeHtml(text) {
+    const map = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
   }
 
   setupAutoplay() {
@@ -259,20 +288,15 @@ class WPCSPollContainer {
   }
 
   getTotalVotes(poll) {
-    const options = Array.isArray(poll.options) ? poll.options : JSON.parse(poll.options || '[]');
+    const options = Array.isArray(poll.options) ? poll.options : [];
     return options.reduce((total, option) => total + (option.votes || 0), 0);
-  }
-
-  getUserVote(pollId) {
-    // This would be populated from server-side data or stored in localStorage
-    return null;
   }
 }
 
 // Global voting function
 window.wpcsVoteOnPoll = function (pollId, optionId) {
   if (!wpcs_poll_ajax.nonce) {
-    alert("Please log in to vote");
+    showNotification("Please log in to vote", 'error');
     return;
   }
 
@@ -293,7 +317,7 @@ window.wpcsVoteOnPoll = function (pollId, optionId) {
         updatePollResults(pollId, data.data.vote_counts);
         showNotification(data.data.message, 'success');
       } else {
-        showNotification(data.data.message || "Voting failed", 'error');
+        showNotification(data.data ? data.data.message : "Voting failed", 'error');
       }
     })
     .catch((error) => {
@@ -305,7 +329,7 @@ window.wpcsVoteOnPoll = function (pollId, optionId) {
 // Global bookmark function
 window.wpcsBookmarkPoll = function(pollId) {
   if (!wpcs_poll_ajax.nonce) {
-    alert("Please log in to bookmark polls");
+    showNotification("Please log in to bookmark polls", 'error');
     return;
   }
 
@@ -322,9 +346,8 @@ window.wpcsBookmarkPoll = function(pollId) {
     .then((data) => {
       if (data.success) {
         showNotification(data.data.message, 'success');
-        // Update bookmark button state if needed
       } else {
-        showNotification(data.data.message || "Bookmark action failed", 'error');
+        showNotification(data.data ? data.data.message : "Bookmark action failed", 'error');
       }
     })
     .catch((error) => {
@@ -345,6 +368,8 @@ window.wpcsSharePoll = function(pollId) {
     const url = window.location.href + '#poll-' + pollId;
     navigator.clipboard.writeText(url).then(() => {
       showNotification('Poll URL copied to clipboard!', 'success');
+    }).catch(() => {
+      showNotification('Could not copy URL', 'error');
     });
   }
 };
@@ -367,11 +392,25 @@ function updatePollResults(pollId, voteCounts) {
     const percentageSpan = option.querySelector('.option-percentage');
     if (percentageSpan) {
       percentageSpan.textContent = percentage.toFixed(1) + '%';
+    } else {
+      // Add percentage span if it doesn't exist
+      const optionContent = option.querySelector('.option-content');
+      if (optionContent) {
+        optionContent.innerHTML += `<span class="option-percentage">${percentage.toFixed(1)}%</span>`;
+      }
     }
 
     const progressBar = option.querySelector('.progress-bar');
     if (progressBar) {
       progressBar.style.width = percentage + '%';
+    } else {
+      // Add progress bar if it doesn't exist
+      option.innerHTML += `
+        <div class="option-progress">
+          <div class="progress-bar" style="width: ${percentage}%"></div>
+        </div>
+        <div class="option-votes">${voteCount} votes</div>
+      `;
     }
 
     const votesSpan = option.querySelector('.option-votes');

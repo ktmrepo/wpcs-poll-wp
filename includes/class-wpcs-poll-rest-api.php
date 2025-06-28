@@ -1,7 +1,34 @@
 <?php
+/**
+ * REST API for WPCS Poll
+ *
+ * @package WPCS_Poll
+ * @since 1.0.0
+ */
+
+// Prevent direct access
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 class WPCS_Poll_REST_API {
+    
+    private $db;
+
     public function __construct() {
         add_action('rest_api_init', array($this, 'register_routes'));
+    }
+
+    /**
+     * Get database handler
+     */
+    private function get_db() {
+        if (null === $this->db) {
+            if (class_exists('WPCS_Poll_Database')) {
+                $this->db = new WPCS_Poll_Database();
+            }
+        }
+        return $this->db;
     }
 
     public function register_routes() {
@@ -41,106 +68,149 @@ class WPCS_Poll_REST_API {
             'callback' => array($this, 'vote_on_poll'),
             'permission_callback' => array($this, 'check_vote_permission')
         ));
-
-        register_rest_route('wpcs-poll/v1', '/user/dashboard', array(
-            'methods' => 'GET',
-            'callback' => array($this, 'get_user_dashboard'),
-            'permission_callback' => array($this, 'check_user_permission')
-        ));
-
-        register_rest_route('wpcs-poll/v1', '/admin/stats', array(
-            'methods' => 'GET',
-            'callback' => array($this, 'get_admin_stats'),
-            'permission_callback' => array($this, 'check_admin_permission')
-        ));
     }
 
     public function get_polls($request) {
-        global $wpdb;
-        
+        $db = $this->get_db();
+        if (!$db) {
+            return new WP_Error('database_error', 'Database service not available', array('status' => 500));
+        }
+
         $category = $request->get_param('category');
         $limit = $request->get_param('limit') ?: 10;
         $offset = $request->get_param('offset') ?: 0;
         $search = $request->get_param('search');
         $user_id = get_current_user_id();
 
-        $where_conditions = array("p.is_active = 1");
-        $where_values = array();
+        // Build query arguments
+        $args = array(
+            'limit' => intval($limit),
+            'offset' => intval($offset),
+            'is_active' => 1,
+            'order_by' => 'created_at',
+            'order' => 'DESC'
+        );
 
         if ($category && $category !== 'all') {
-            $where_conditions[] = "p.category = %s";
-            $where_values[] = $category;
+            $args['category'] = sanitize_text_field($category);
         }
 
         if ($search) {
-            $where_conditions[] = "(p.title LIKE %s OR p.description LIKE %s)";
-            $where_values[] = '%' . $search . '%';
-            $where_values[] = '%' . $search . '%';
+            $args['search'] = sanitize_text_field($search);
         }
 
-        $where_clause = implode(' AND ', $where_conditions);
+        try {
+            $polls = $db->get_polls($args);
+            
+            // If no polls found, create sample polls
+            if (empty($polls)) {
+                $this->create_sample_polls();
+                $polls = $db->get_polls($args);
+            }
 
-        $query = "
-            SELECT p.*, u.display_name as creator_name,
-                   (SELECT COUNT(*) FROM {$wpdb->prefix}wpcs_poll_votes v WHERE v.poll_id = p.id) as total_votes,
-                   " . ($user_id ? "(SELECT option_id FROM {$wpdb->prefix}wpcs_poll_votes v WHERE v.poll_id = p.id AND v.user_id = %d) as user_vote" : "NULL as user_vote") . ",
-                   " . ($user_id ? "(SELECT COUNT(*) FROM {$wpdb->prefix}wpcs_poll_bookmarks b WHERE b.poll_id = p.id AND b.user_id = %d) as is_bookmarked" : "0 as is_bookmarked") . "
-            FROM {$wpdb->prefix}wpcs_polls p
-            LEFT JOIN {$wpdb->prefix}users u ON p.created_by = u.ID
-            WHERE {$where_clause}
-            ORDER BY p.created_at DESC
-            LIMIT %d OFFSET %d
-        ";
+            // Process polls data for frontend
+            foreach ($polls as &$poll) {
+                // Ensure options is an array
+                if (is_string($poll->options)) {
+                    $poll->options = json_decode($poll->options, true);
+                }
+                if (!is_array($poll->options)) {
+                    $poll->options = array();
+                }
 
-        if ($user_id) {
-            $where_values[] = $user_id;
-            $where_values[] = $user_id;
+                // Add user vote information
+                $poll->user_vote = null;
+                if ($user_id) {
+                    global $wpdb;
+                    $poll->user_vote = $wpdb->get_var($wpdb->prepare(
+                        "SELECT option_id FROM {$wpdb->prefix}wpcs_poll_votes WHERE user_id = %d AND poll_id = %d",
+                        $user_id, $poll->id
+                    ));
+                }
+
+                // Calculate total votes
+                $poll->total_votes = 0;
+                foreach ($poll->options as $option) {
+                    $poll->total_votes += isset($option['votes']) ? intval($option['votes']) : 0;
+                }
+
+                // Add creator name
+                if ($poll->created_by) {
+                    $creator = get_userdata($poll->created_by);
+                    $poll->creator_name = $creator ? $creator->display_name : 'Unknown';
+                } else {
+                    $poll->creator_name = 'System';
+                }
+
+                // Process tags
+                if ($poll->tags) {
+                    $poll->tags = is_array($poll->tags) ? $poll->tags : explode(',', $poll->tags);
+                } else {
+                    $poll->tags = array();
+                }
+            }
+
+            return rest_ensure_response($polls);
+
+        } catch (Exception $e) {
+            return new WP_Error('fetch_error', 'Failed to fetch polls: ' . $e->getMessage(), array('status' => 500));
         }
-        $where_values[] = $limit;
-        $where_values[] = $offset;
-
-        $polls = $wpdb->get_results($wpdb->prepare($query, $where_values));
-
-        // Process polls data
-        foreach ($polls as &$poll) {
-            $poll->options = json_decode($poll->options, true);
-            $poll->tags = $poll->tags ? explode(',', $poll->tags) : array();
-            $poll->is_bookmarked = (bool) $poll->is_bookmarked;
-        }
-
-        return rest_ensure_response($polls);
     }
 
     public function get_poll($request) {
-        global $wpdb;
-        
-        $poll_id = $request['id'];
-        $user_id = get_current_user_id();
-
-        $query = "
-            SELECT p.*, u.display_name as creator_name,
-                   (SELECT COUNT(*) FROM {$wpdb->prefix}wpcs_poll_votes v WHERE v.poll_id = p.id) as total_votes,
-                   " . ($user_id ? "(SELECT option_id FROM {$wpdb->prefix}wpcs_poll_votes v WHERE v.poll_id = p.id AND v.user_id = %d) as user_vote" : "NULL as user_vote") . "
-            FROM {$wpdb->prefix}wpcs_polls p
-            LEFT JOIN {$wpdb->prefix}users u ON p.created_by = u.ID
-            WHERE p.id = %d
-        ";
-
-        $values = $user_id ? array($user_id, $poll_id) : array($poll_id);
-        $poll = $wpdb->get_row($wpdb->prepare($query, $values));
-
-        if (!$poll) {
-            return new WP_Error('poll_not_found', 'Poll not found', array('status' => 404));
+        $db = $this->get_db();
+        if (!$db) {
+            return new WP_Error('database_error', 'Database service not available', array('status' => 500));
         }
 
-        $poll->options = json_decode($poll->options, true);
-        $poll->tags = $poll->tags ? explode(',', $poll->tags) : array();
+        $poll_id = intval($request['id']);
+        $user_id = get_current_user_id();
 
-        return rest_ensure_response($poll);
+        try {
+            $poll = $db->get_poll($poll_id);
+
+            if (!$poll) {
+                return new WP_Error('poll_not_found', 'Poll not found', array('status' => 404));
+            }
+
+            // Add user vote information
+            $poll->user_vote = null;
+            if ($user_id) {
+                global $wpdb;
+                $poll->user_vote = $wpdb->get_var($wpdb->prepare(
+                    "SELECT option_id FROM {$wpdb->prefix}wpcs_poll_votes WHERE user_id = %d AND poll_id = %d",
+                    $user_id, $poll->id
+                ));
+            }
+
+            // Calculate total votes
+            $poll->total_votes = 0;
+            if (is_array($poll->options)) {
+                foreach ($poll->options as $option) {
+                    $poll->total_votes += isset($option['votes']) ? intval($option['votes']) : 0;
+                }
+            }
+
+            // Add creator name
+            if ($poll->created_by) {
+                $creator = get_userdata($poll->created_by);
+                $poll->creator_name = $creator ? $creator->display_name : 'Unknown';
+            } else {
+                $poll->creator_name = 'System';
+            }
+
+            return rest_ensure_response($poll);
+
+        } catch (Exception $e) {
+            return new WP_Error('fetch_error', 'Failed to fetch poll: ' . $e->getMessage(), array('status' => 500));
+        }
     }
 
     public function create_poll($request) {
-        global $wpdb;
+        $db = $this->get_db();
+        if (!$db) {
+            return new WP_Error('database_error', 'Database service not available', array('status' => 500));
+        }
 
         $user_id = get_current_user_id();
         $title = sanitize_text_field($request->get_param('title'));
@@ -154,52 +224,43 @@ class WPCS_Poll_REST_API {
             return new WP_Error('invalid_data', 'Title and at least 2 options are required', array('status' => 400));
         }
 
-        // Process options
-        $processed_options = array();
-        foreach ($options as $index => $option) {
-            $processed_options[] = array(
-                'id' => 'option_' . ($index + 1),
-                'text' => sanitize_text_field($option),
-                'votes' => 0
-            );
-        }
-
         // Process tags
         $processed_tags = '';
         if ($tags && is_array($tags)) {
             $processed_tags = implode(',', array_map('sanitize_text_field', $tags));
+        } elseif ($tags) {
+            $processed_tags = sanitize_text_field($tags);
         }
 
-        // Insert poll
-        $result = $wpdb->insert(
-            $wpdb->prefix . 'wpcs_polls',
-            array(
-                'title' => $title,
-                'description' => $description,
-                'category' => $category,
-                'options' => json_encode($processed_options),
-                'tags' => $processed_tags,
-                'is_active' => current_user_can('manage_options') ? 1 : 0, // Auto-approve for admins
-                'created_by' => $user_id
-            ),
-            array('%s', '%s', '%s', '%s', '%s', '%d', '%d')
+        $poll_data = array(
+            'title' => $title,
+            'description' => $description,
+            'category' => $category,
+            'options' => $options,
+            'tags' => $processed_tags,
+            'is_active' => current_user_can('manage_options') ? 1 : 0,
+            'created_by' => $user_id
         );
 
-        if ($result) {
-            $poll_id = $wpdb->insert_id;
+        $result = $db->create_poll($poll_data);
+
+        if (is_wp_error($result)) {
+            return $result;
+        } else {
             return rest_ensure_response(array(
-                'id' => $poll_id,
+                'id' => $result,
                 'message' => current_user_can('manage_options') ? 'Poll created and published' : 'Poll created and pending approval'
             ));
-        } else {
-            return new WP_Error('creation_failed', 'Failed to create poll', array('status' => 500));
         }
     }
 
     public function vote_on_poll($request) {
-        global $wpdb;
+        $db = $this->get_db();
+        if (!$db) {
+            return new WP_Error('database_error', 'Database service not available', array('status' => 500));
+        }
 
-        $poll_id = $request['id'];
+        $poll_id = intval($request['id']);
         $option_id = sanitize_text_field($request->get_param('option_id'));
         $user_id = get_current_user_id();
 
@@ -207,157 +268,81 @@ class WPCS_Poll_REST_API {
             return new WP_Error('login_required', 'Please log in to vote', array('status' => 401));
         }
 
-        // Check if user already voted
-        $existing_vote = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}wpcs_poll_votes WHERE user_id = %d AND poll_id = %d",
-            $user_id, $poll_id
-        ));
+        $result = $db->add_vote($user_id, $poll_id, $option_id);
 
-        if ($existing_vote) {
-            return new WP_Error('already_voted', 'You have already voted on this poll', array('status' => 400));
-        }
-
-        // Verify poll exists and is active
-        $poll = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}wpcs_polls WHERE id = %d AND is_active = 1",
-            $poll_id
-        ));
-
-        if (!$poll) {
-            return new WP_Error('poll_not_found', 'Poll not found or inactive', array('status' => 404));
-        }
-
-        // Record vote
-        $result = $wpdb->insert(
-            $wpdb->prefix . 'wpcs_poll_votes',
-            array(
-                'user_id' => $user_id,
-                'poll_id' => $poll_id,
-                'option_id' => $option_id,
-                'ip_address' => $this->get_user_ip()
-            ),
-            array('%d', '%d', '%s', '%s')
-        );
-
-        if ($result) {
-            // Update vote counts
-            $this->update_poll_vote_counts($poll_id);
-            
+        if (is_wp_error($result)) {
+            return $result;
+        } else {
+            $vote_counts = $db->get_vote_counts_for_poll($poll_id);
             return rest_ensure_response(array(
                 'message' => 'Vote recorded successfully',
                 'poll_id' => $poll_id,
-                'option_id' => $option_id
+                'option_id' => $option_id,
+                'vote_counts' => $vote_counts
             ));
-        } else {
-            return new WP_Error('vote_failed', 'Failed to record vote', array('status' => 500));
         }
     }
 
-    public function get_user_dashboard($request) {
-        global $wpdb;
+    /**
+     * Create sample polls if none exist
+     */
+    private function create_sample_polls() {
+        $db = $this->get_db();
+        if (!$db) {
+            return;
+        }
 
-        $user_id = get_current_user_id();
-
-        // Get user's voting stats
-        $voting_stats = $wpdb->get_row($wpdb->prepare("
-            SELECT 
-                COUNT(*) as total_votes,
-                COUNT(DISTINCT poll_id) as polls_voted_on
-            FROM {$wpdb->prefix}wpcs_poll_votes 
-            WHERE user_id = %d
-        ", $user_id));
-
-        // Get user's created polls
-        $created_polls = $wpdb->get_results($wpdb->prepare("
-            SELECT p.*, 
-                   (SELECT COUNT(*) FROM {$wpdb->prefix}wpcs_poll_votes v WHERE v.poll_id = p.id) as total_votes
-            FROM {$wpdb->prefix}wpcs_polls p
-            WHERE p.created_by = %d
-            ORDER BY p.created_at DESC
-            LIMIT 10
-        ", $user_id));
-
-        // Get user's bookmarked polls
-        $bookmarked_polls = $wpdb->get_results($wpdb->prepare("
-            SELECT p.*, b.created_at as bookmarked_at,
-                   (SELECT COUNT(*) FROM {$wpdb->prefix}wpcs_poll_votes v WHERE v.poll_id = p.id) as total_votes
-            FROM {$wpdb->prefix}wpcs_poll_bookmarks b
-            JOIN {$wpdb->prefix}wpcs_polls p ON b.poll_id = p.id
-            WHERE b.user_id = %d AND p.is_active = 1
-            ORDER BY b.created_at DESC
-            LIMIT 10
-        ", $user_id));
-
-        // Get recent voting activity
-        $recent_votes = $wpdb->get_results($wpdb->prepare("
-            SELECT v.*, p.title as poll_title, p.category
-            FROM {$wpdb->prefix}wpcs_poll_votes v
-            JOIN {$wpdb->prefix}wpcs_polls p ON v.poll_id = p.id
-            WHERE v.user_id = %d
-            ORDER BY v.created_at DESC
-            LIMIT 10
-        ", $user_id));
-
-        return rest_ensure_response(array(
-            'voting_stats' => $voting_stats,
-            'created_polls' => $created_polls,
-            'bookmarked_polls' => $bookmarked_polls,
-            'recent_votes' => $recent_votes
-        ));
-    }
-
-    public function get_admin_stats($request) {
-        global $wpdb;
-
-        // Total counts
-        $total_polls = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}wpcs_polls");
-        $active_polls = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}wpcs_polls WHERE is_active = 1");
-        $pending_polls = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}wpcs_polls WHERE is_active = 0");
-        $total_votes = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}wpcs_poll_votes");
-        $total_users = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}users");
-
-        // Popular categories
-        $popular_categories = $wpdb->get_results("
-            SELECT category, COUNT(*) as count
-            FROM {$wpdb->prefix}wpcs_polls
-            WHERE is_active = 1
-            GROUP BY category
-            ORDER BY count DESC
-            LIMIT 10
-        ");
-
-        // Recent activity
-        $recent_polls = $wpdb->get_results("
-            SELECT p.*, u.display_name as creator_name,
-                   (SELECT COUNT(*) FROM {$wpdb->prefix}wpcs_poll_votes v WHERE v.poll_id = p.id) as vote_count
-            FROM {$wpdb->prefix}wpcs_polls p
-            LEFT JOIN {$wpdb->prefix}users u ON p.created_by = u.ID
-            ORDER BY p.created_at DESC
-            LIMIT 10
-        ");
-
-        // Most active users
-        $active_users = $wpdb->get_results("
-            SELECT u.display_name, u.user_email, COUNT(v.id) as vote_count
-            FROM {$wpdb->prefix}users u
-            JOIN {$wpdb->prefix}wpcs_poll_votes v ON u.ID = v.user_id
-            GROUP BY u.ID
-            ORDER BY vote_count DESC
-            LIMIT 10
-        ");
-
-        return rest_ensure_response(array(
-            'totals' => array(
-                'polls' => $total_polls,
-                'active_polls' => $active_polls,
-                'pending_polls' => $pending_polls,
-                'votes' => $total_votes,
-                'users' => $total_users
+        $sample_polls = array(
+            array(
+                'title' => 'What\'s your favorite programming language?',
+                'description' => 'Choose the programming language you enjoy working with the most.',
+                'category' => 'Technology',
+                'options' => array('JavaScript', 'Python', 'PHP', 'Java'),
+                'tags' => 'programming,technology,coding',
+                'is_active' => 1,
+                'created_by' => 0
             ),
-            'popular_categories' => $popular_categories,
-            'recent_polls' => $recent_polls,
-            'active_users' => $active_users
-        ));
+            array(
+                'title' => 'Best time to exercise?',
+                'description' => 'When do you prefer to work out during the day?',
+                'category' => 'Health',
+                'options' => array('Early Morning', 'Afternoon', 'Evening', 'Night'),
+                'tags' => 'health,fitness,exercise',
+                'is_active' => 1,
+                'created_by' => 0
+            ),
+            array(
+                'title' => 'Favorite social media platform?',
+                'description' => 'Which social media platform do you use the most?',
+                'category' => 'Technology',
+                'options' => array('Instagram', 'Twitter', 'Facebook', 'TikTok', 'LinkedIn'),
+                'tags' => 'social media,technology',
+                'is_active' => 1,
+                'created_by' => 0
+            ),
+            array(
+                'title' => 'Preferred work environment?',
+                'description' => 'Where do you work best?',
+                'category' => 'Business',
+                'options' => array('Home Office', 'Coffee Shop', 'Traditional Office', 'Co-working Space'),
+                'tags' => 'work,productivity,business',
+                'is_active' => 1,
+                'created_by' => 0
+            ),
+            array(
+                'title' => 'Favorite movie genre?',
+                'description' => 'What type of movies do you enjoy watching?',
+                'category' => 'Entertainment',
+                'options' => array('Action', 'Comedy', 'Drama', 'Horror', 'Sci-Fi'),
+                'tags' => 'movies,entertainment',
+                'is_active' => 1,
+                'created_by' => 0
+            )
+        );
+
+        foreach ($sample_polls as $poll_data) {
+            $db->create_poll($poll_data);
+        }
     }
 
     // Permission callbacks
@@ -390,50 +375,5 @@ class WPCS_Poll_REST_API {
 
     public function check_vote_permission() {
         return is_user_logged_in();
-    }
-
-    public function check_user_permission() {
-        return is_user_logged_in();
-    }
-
-    public function check_admin_permission() {
-        return current_user_can('manage_options');
-    }
-
-    private function update_poll_vote_counts($poll_id) {
-        global $wpdb;
-        
-        $poll = $wpdb->get_row($wpdb->prepare(
-            "SELECT options FROM {$wpdb->prefix}wpcs_polls WHERE id = %d",
-            $poll_id
-        ));
-
-        if (!$poll) return;
-
-        $options = json_decode($poll->options, true);
-        
-        foreach ($options as &$option) {
-            $vote_count = $wpdb->get_var($wpdb->prepare(
-                "SELECT COUNT(*) FROM {$wpdb->prefix}wpcs_poll_votes WHERE poll_id = %d AND option_id = %s",
-                $poll_id, $option['id']
-            ));
-            $option['votes'] = intval($vote_count);
-        }
-
-        $wpdb->update(
-            $wpdb->prefix . 'wpcs_polls',
-            array('options' => json_encode($options)),
-            array('id' => $poll_id)
-        );
-    }
-
-    private function get_user_ip() {
-        if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
-            return $_SERVER['HTTP_CLIENT_IP'];
-        } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-            return $_SERVER['HTTP_X_FORWARDED_FOR'];
-        } else {
-            return $_SERVER['REMOTE_ADDR'];
-        }
     }
 }
