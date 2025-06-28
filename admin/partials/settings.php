@@ -49,10 +49,54 @@ $options = get_option('wpcs_poll_options', array(
     'enable_analytics' => 1,
     'delete_data_on_uninstall' => 0
 ));
+
+// Get version information
+$plugin_version = WPCS_POLL_VERSION;
+$build_date = get_option('wpcs_poll_build_date', WPCS_POLL_BUILD_DATE);
+$build_number = get_option('wpcs_poll_build_number', WPCS_POLL_BUILD_NUMBER);
+$install_date = get_option('wpcs_poll_install_date', 'Unknown');
 ?>
 
 <div class="wrap">
     <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
+    
+    <!-- Version Information Banner -->
+    <div class="version-info-banner">
+        <div class="version-header">
+            <h2><?php _e('Plugin Version Information', 'wpcs-poll'); ?></h2>
+            <div class="version-badge">v<?php echo esc_html($plugin_version); ?></div>
+        </div>
+        <div class="version-details">
+            <div class="version-item">
+                <strong><?php _e('Current Version:', 'wpcs-poll'); ?></strong>
+                <span class="version-value"><?php echo esc_html($plugin_version); ?></span>
+            </div>
+            <div class="version-item">
+                <strong><?php _e('Build Date:', 'wpcs-poll'); ?></strong>
+                <span class="version-value"><?php echo esc_html(date('F j, Y g:i A', strtotime($build_date))); ?></span>
+            </div>
+            <div class="version-item">
+                <strong><?php _e('Build Number:', 'wpcs-poll'); ?></strong>
+                <span class="version-value"><?php echo esc_html($build_number); ?></span>
+            </div>
+            <div class="version-item">
+                <strong><?php _e('Installation Date:', 'wpcs-poll'); ?></strong>
+                <span class="version-value"><?php echo esc_html($install_date); ?></span>
+            </div>
+        </div>
+        <div class="version-features">
+            <h4><?php _e('Latest Features (v1.2.0):', 'wpcs-poll'); ?></h4>
+            <ul>
+                <li>✅ Horizontal TikTok-style swiping (left/right navigation)</li>
+                <li>✅ Auto-advance timer with 5-second countdown after voting</li>
+                <li>✅ Enhanced vote indicators with green checkmarks</li>
+                <li>✅ Improved results display for voted polls</li>
+                <li>✅ Fixed navigation button positioning and styling</li>
+                <li>✅ Enhanced debugging and error handling</li>
+                <li>✅ Version tracking system with build information</li>
+            </ul>
+        </div>
+    </div>
     
     <form method="post" action="">
         <?php wp_nonce_field('wpcs_poll_settings', 'wpcs_poll_settings_nonce'); ?>
@@ -189,7 +233,10 @@ $options = get_option('wpcs_poll_options', array(
             <table class="form-table">
                 <tr>
                     <th scope="row"><?php _e('Plugin Version', 'wpcs-poll'); ?></th>
-                    <td><?php echo WPCS_POLL_VERSION; ?></td>
+                    <td>
+                        <strong style="color: #0073aa;"><?php echo WPCS_POLL_VERSION; ?></strong>
+                        <span class="version-build">(Build: <?php echo esc_html($build_number); ?>)</span>
+                    </td>
                 </tr>
                 <tr>
                     <th scope="row"><?php _e('WordPress Version', 'wpcs-poll'); ?></th>
@@ -215,6 +262,19 @@ $options = get_option('wpcs_poll_options', array(
                             echo '<span style="color: ' . ($exists ? 'green' : 'red') . ';">' . $table . ' (' . ($exists ? 'exists' : 'missing') . ')</span><br>';
                         }
                         ?>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><?php _e('Debug Mode', 'wpcs-poll'); ?></th>
+                    <td>
+                        <?php if (defined('WP_DEBUG') && WP_DEBUG): ?>
+                            <span style="color: orange;">Enabled</span>
+                            <?php if (defined('WP_DEBUG_LOG') && WP_DEBUG_LOG): ?>
+                                <span style="color: green;">(Logging Enabled)</span>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <span style="color: #666;">Disabled</span>
+                        <?php endif; ?>
                     </td>
                 </tr>
             </table>
@@ -300,6 +360,85 @@ function importSettings() {
 </script>
 
 <style>
+.version-info-banner {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 25px;
+    border-radius: 12px;
+    margin-bottom: 30px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.version-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.version-header h2 {
+    margin: 0;
+    color: white;
+    font-size: 24px;
+}
+
+.version-badge {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 16px;
+    font-weight: bold;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.version-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.version-item {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 12px 15px;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.version-item strong {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.version-value {
+    color: white;
+    font-weight: 600;
+}
+
+.version-features {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 20px;
+    border-radius: 8px;
+}
+
+.version-features h4 {
+    margin: 0 0 15px 0;
+    color: white;
+    font-size: 18px;
+}
+
+.version-features ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.version-features li {
+    margin-bottom: 8px;
+    color: rgba(255, 255, 255, 0.9);
+    line-height: 1.4;
+}
+
 .settings-section {
     background: #fff;
     border: 1px solid #ddd;
@@ -336,5 +475,29 @@ function importSettings() {
 
 .regular-text {
     width: 300px;
+}
+
+.version-build {
+    color: #666;
+    font-size: 12px;
+    margin-left: 10px;
+}
+
+@media (max-width: 768px) {
+    .version-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
+    }
+    
+    .version-details {
+        grid-template-columns: 1fr;
+    }
+    
+    .version-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+    }
 }
 </style>

@@ -3,7 +3,7 @@
  * Plugin Name: WPCS Poll
  * Plugin URI: https://yoursite.com/wpcs-poll
  * Description: TikTok-style interactive polling system with comprehensive admin management
- * Version: 1.0.0
+ * Version: 1.2.0
  * Author: Your Name
  * License: GPL v2 or later
  * Text Domain: wpcs-poll
@@ -16,7 +16,9 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('WPCS_POLL_VERSION', '1.0.0');
+define('WPCS_POLL_VERSION', '1.2.0');
+define('WPCS_POLL_BUILD_DATE', '2024-12-19 15:30:00');
+define('WPCS_POLL_BUILD_NUMBER', '20241219153000');
 define('WPCS_POLL_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WPCS_POLL_PLUGIN_PATH', plugin_dir_path(__FILE__));
 
@@ -39,3 +41,22 @@ function run_wpcs_poll() {
 
 // Start the plugin
 add_action('plugins_loaded', 'run_wpcs_poll');
+
+// Add version check and update notification
+add_action('admin_notices', 'wpcs_poll_version_notice');
+
+function wpcs_poll_version_notice() {
+    $current_version = get_option('wpcs_poll_version', '0.0.0');
+    
+    if (version_compare($current_version, WPCS_POLL_VERSION, '<')) {
+        echo '<div class="notice notice-info is-dismissible">';
+        echo '<p><strong>WPCS Poll Updated!</strong> Version ' . WPCS_POLL_VERSION . ' is now active. ';
+        echo '<a href="' . admin_url('admin.php?page=wpcs-poll-settings') . '">View version details</a></p>';
+        echo '</div>';
+        
+        // Update stored version
+        update_option('wpcs_poll_version', WPCS_POLL_VERSION);
+        update_option('wpcs_poll_build_date', WPCS_POLL_BUILD_DATE);
+        update_option('wpcs_poll_build_number', WPCS_POLL_BUILD_NUMBER);
+    }
+}

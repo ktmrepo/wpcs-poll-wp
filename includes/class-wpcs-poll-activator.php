@@ -20,6 +20,7 @@ class WPCS_Poll_Activator {
         self::create_tables();
         self::set_default_options();
         self::create_default_categories();
+        self::record_installation_info();
         
         // Flush rewrite rules
         flush_rewrite_rules();
@@ -134,8 +135,6 @@ class WPCS_Poll_Activator {
      * Create default categories
      */
     private static function create_default_categories() {
-        global $wpdb;
-
         $default_categories = array(
             'General',
             'Technology',
@@ -151,5 +150,23 @@ class WPCS_Poll_Activator {
 
         // Store categories as an option for easy management
         add_option('wpcs_poll_categories', $default_categories);
+    }
+
+    /**
+     * Record installation information
+     */
+    private static function record_installation_info() {
+        // Record installation date if not already set
+        if (!get_option('wpcs_poll_install_date')) {
+            add_option('wpcs_poll_install_date', current_time('mysql'));
+        }
+        
+        // Update version information
+        update_option('wpcs_poll_version', WPCS_POLL_VERSION);
+        update_option('wpcs_poll_build_date', WPCS_POLL_BUILD_DATE);
+        update_option('wpcs_poll_build_number', WPCS_POLL_BUILD_NUMBER);
+        
+        // Record activation timestamp
+        update_option('wpcs_poll_last_activation', current_time('timestamp'));
     }
 }
