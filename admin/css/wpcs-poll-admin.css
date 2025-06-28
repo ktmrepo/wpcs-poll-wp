@@ -1,0 +1,124 @@
+/* WPCS Poll Admin Styles */
+
+.wpcs-poll-admin-content {
+    max-width: 1200px;
+}
+
+.postbox {
+    margin-bottom: 20px;
+}
+
+.postbox .hndle {
+    background: #0073aa;
+    color: white;
+    padding: 12px 20px;
+    margin: 0;
+    border-radius: 8px 8px 0 0;
+}
+
+.postbox .inside {
+    padding: 20px;
+}
+
+/* Form Styles */
+.form-table th {
+    width: 200px;
+    padding: 15px 10px 15px 0;
+    vertical-align: top;
+}
+
+.form-table td {
+    padding: 15px 10px;
+}
+
+.form-table input[type="text"],
+.form-table input[type="email"],
+.form-table input[type="url"],
+.form-table input[type="number"],
+.form-table select,
+.form-table textarea {
+    width: 100%;
+    max-width: 400px;
+}
+
+.form-table textarea {
+    height: 100px;
+    resize: vertical;
+}
+
+/* Button Styles */
+.button-primary {
+    background: #0073aa;
+    border-color: #0073aa;
+    color: white;
+}
+
+.button-primary:hover {
+    background: #005a87;
+    border-color: #005a87;
+}
+
+/* Code blocks */
+pre {
+    background: #f1f1f1;
+    padding: 15px;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+code {
+    background: #f1f1f1;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+}
+
+/* Upload progress */
+.upload-progress {
+    margin-top: 15px;
+    padding: 10px;
+    background: #f9f9f9;
+    border-radius: 4px;
+    display: none;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background: #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 10px 0;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0073aa, #005a87);
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .form-table th,
+    .form-table td {
+        display: block;
+        width: 100%;
+        padding: 10px 0;
+    }
+    
+    .form-table th {
+        border-bottom: none;
+    }
+    
+    .form-table input[type="text"],
+    .form-table input[type="email"],
+    .form-table input[type="url"],
+    .form-table input[type="number"],
+    .form-table select,
+    .form-table textarea {
+        max-width: 100%;
+    }
+}
