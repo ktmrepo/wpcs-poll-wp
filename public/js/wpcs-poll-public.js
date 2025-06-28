@@ -1,11 +1,19 @@
+/**
+ * WPCS Poll Public JavaScript - Enhanced TikTok Style
+ */
+
 class WPCSPollContainer {
   constructor(container) {
     this.container = container;
     this.currentIndex = 0;
     this.polls = [];
-    this.touchStartY = 0;
-    this.touchEndY = 0;
+    this.touchStartX = 0;
+    this.touchEndX = 0;
     this.isAnimating = false;
+    this.autoAdvanceTimer = null;
+    this.countdownTimer = null;
+    this.countdownSeconds = 5;
+    this.userHasVoted = false;
 
     this.init();
   }
@@ -99,6 +107,17 @@ class WPCSPollContainer {
                         <span class="poll-votes">${this.getTotalVotes(poll)} votes</span>
                     </div>
                 </div>
+                <div class="auto-advance-timer" style="display: none;">
+                  <div class="timer-circle">
+                    <div class="timer-text">5</div>
+                    <svg class="timer-progress" width="60" height="60">
+                      <circle cx="30" cy="30" r="25" stroke="#ffffff40" stroke-width="3" fill="none"/>
+                      <circle cx="30" cy="30" r="25" stroke="#ffffff" stroke-width="3" fill="none" 
+                              stroke-dasharray="157" stroke-dashoffset="157" class="progress-circle"/>
+                    </svg>
+                  </div>
+                  <div class="timer-label">Next poll in</div>
+                </div>
             </div>
         `
       )
@@ -111,12 +130,12 @@ class WPCSPollContainer {
                 <div class="poll-navigation">
                     <button class="nav-btn prev-btn" aria-label="Previous poll">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                            <path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/>
                         </svg>
                     </button>
                     <button class="nav-btn next-btn" aria-label="Next poll">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
                         </svg>
                     </button>
                 </div>
@@ -178,6 +197,7 @@ class WPCSPollContainer {
 
     const totalVotes = this.getTotalVotes(poll);
     const userVote = poll.user_vote;
+    const hasVoted = userVote !== null && userVote !== undefined;
 
     if (!Array.isArray(options) || options.length === 0) {
       console.warn('WPCS Poll Debug: No valid options found for poll', poll.id);
@@ -195,22 +215,25 @@ class WPCSPollContainer {
         
         const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
         const isSelected = userVote === optionId;
-        const showResults = userVote !== null;
+        const showResults = hasVoted;
 
         console.log('WPCS Poll Debug: Option processed:', {
           id: optionId,
           text: optionText,
           votes: voteCount,
-          percentage: percentage
+          percentage: percentage,
+          isSelected: isSelected,
+          showResults: showResults
         });
 
         return `
-                <div class="poll-option ${isSelected ? "selected" : ""} ${showResults ? "show-results" : ""}" 
+                <div class="poll-option ${isSelected ? "selected user-voted" : ""} ${showResults ? "show-results" : ""}" 
                      data-option-id="${optionId}" 
-                     onclick="wpcsVoteOnPoll(${poll.id}, '${optionId}')">
+                     onclick="wpcsVoteOnPoll(${poll.id}, '${optionId}', this)">
                     <div class="option-content">
                         <span class="option-text">${this.escapeHtml(optionText)}</span>
                         ${showResults ? `<span class="option-percentage">${percentage.toFixed(1)}%</span>` : ''}
+                        ${isSelected ? '<span class="vote-indicator">✓</span>' : ''}
                     </div>
                     ${showResults ? `
                     <div class="option-progress">
@@ -237,32 +260,78 @@ class WPCSPollContainer {
   }
 
   setupAutoplay() {
-    setInterval(() => {
-      if (!this.isAnimating) {
-        this.nextPoll();
-      }
-    }, 5000); // Change poll every 5 seconds
+    // Auto-advance is now triggered after voting, not on a timer
+    console.log('WPCS Poll Debug: Autoplay enabled - will advance after voting');
+  }
+
+  startAutoAdvanceTimer() {
+    this.clearTimers();
+    this.countdownSeconds = 5;
+    this.userHasVoted = true;
+    
+    const currentCard = this.container.querySelector(`[data-index="${this.currentIndex}"]`);
+    const timerElement = currentCard?.querySelector('.auto-advance-timer');
+    const timerText = currentCard?.querySelector('.timer-text');
+    const progressCircle = currentCard?.querySelector('.progress-circle');
+    
+    if (timerElement && timerText && progressCircle) {
+      timerElement.style.display = 'block';
+      
+      // Start countdown
+      this.countdownTimer = setInterval(() => {
+        this.countdownSeconds--;
+        timerText.textContent = this.countdownSeconds;
+        
+        // Update progress circle
+        const progress = ((5 - this.countdownSeconds) / 5) * 157;
+        progressCircle.style.strokeDashoffset = 157 - progress;
+        
+        if (this.countdownSeconds <= 0) {
+          this.clearTimers();
+          timerElement.style.display = 'none';
+          this.nextPoll();
+        }
+      }, 1000);
+    }
+  }
+
+  clearTimers() {
+    if (this.autoAdvanceTimer) {
+      clearTimeout(this.autoAdvanceTimer);
+      this.autoAdvanceTimer = null;
+    }
+    if (this.countdownTimer) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+    }
+    
+    // Hide timer display
+    const timerElements = this.container.querySelectorAll('.auto-advance-timer');
+    timerElements.forEach(timer => timer.style.display = 'none');
   }
 
   bindEvents() {
-    // Touch events for mobile swiping
+    // Touch events for mobile swiping (horizontal)
     this.container.addEventListener("touchstart", (e) => {
-      this.touchStartY = e.touches[0].clientY;
+      this.touchStartX = e.touches[0].clientX;
     });
 
     this.container.addEventListener("touchend", (e) => {
-      this.touchEndY = e.changedTouches[0].clientY;
+      this.touchEndX = e.changedTouches[0].clientX;
       this.handleSwipe();
     });
 
     // Navigation buttons
     this.container.addEventListener("click", (e) => {
       if (e.target.closest(".prev-btn")) {
+        this.clearTimers();
         this.previousPoll();
       } else if (e.target.closest(".next-btn")) {
+        this.clearTimers();
         this.nextPoll();
       } else if (e.target.closest(".indicator")) {
         const index = parseInt(e.target.dataset.index);
+        this.clearTimers();
         this.goToPoll(index);
       }
     });
@@ -273,16 +342,19 @@ class WPCSPollContainer {
       if (!this.container.matches(":hover")) return;
 
       switch (e.key) {
-        case "ArrowUp":
+        case "ArrowLeft":
           e.preventDefault();
+          this.clearTimers();
           this.previousPoll();
           break;
-        case "ArrowDown":
+        case "ArrowRight":
           e.preventDefault();
+          this.clearTimers();
           this.nextPoll();
           break;
         case " ":
           e.preventDefault();
+          this.clearTimers();
           this.nextPoll();
           break;
       }
@@ -291,12 +363,15 @@ class WPCSPollContainer {
 
   handleSwipe() {
     const swipeThreshold = 50;
-    const diff = this.touchStartY - this.touchEndY;
+    const diff = this.touchStartX - this.touchEndX;
 
     if (Math.abs(diff) > swipeThreshold) {
+      this.clearTimers();
       if (diff > 0) {
+        // Swiped left - next poll
         this.nextPoll();
       } else {
+        // Swiped right - previous poll
         this.previousPoll();
       }
     }
@@ -319,13 +394,28 @@ class WPCSPollContainer {
     if (this.isAnimating || index === this.currentIndex || !this.polls[index]) return;
 
     this.isAnimating = true;
+    this.userHasVoted = false;
+    
     const currentCard = this.container.querySelector(
       `[data-index="${this.currentIndex}"]`
     );
     const nextCard = this.container.querySelector(`[data-index="${index}"]`);
 
-    if (currentCard) currentCard.classList.remove("active");
-    if (nextCard) nextCard.classList.add("active");
+    // Slide animation for horizontal movement
+    if (currentCard) {
+      currentCard.classList.remove("active");
+      currentCard.style.transform = index > this.currentIndex ? 'translateX(-100%)' : 'translateX(100%)';
+    }
+    
+    if (nextCard) {
+      nextCard.style.transform = index > this.currentIndex ? 'translateX(100%)' : 'translateX(-100%)';
+      nextCard.classList.add("active");
+      
+      // Animate to center
+      setTimeout(() => {
+        nextCard.style.transform = 'translateX(0)';
+      }, 50);
+    }
 
     // Update indicators
     this.container.querySelectorAll(".indicator").forEach((indicator, i) => {
@@ -336,6 +426,10 @@ class WPCSPollContainer {
 
     setTimeout(() => {
       this.isAnimating = false;
+      // Reset transform for non-active cards
+      this.container.querySelectorAll('.wpcs-poll-card:not(.active)').forEach(card => {
+        card.style.transform = '';
+      });
     }, 300);
   }
 
@@ -364,10 +458,17 @@ class WPCSPollContainer {
       return total + votes;
     }, 0);
   }
+
+  // Method to trigger auto-advance after voting
+  onUserVoted() {
+    if (this.container.dataset.autoplay === 'true' && !this.userHasVoted) {
+      this.startAutoAdvanceTimer();
+    }
+  }
 }
 
-// Global voting function with improved error handling
-window.wpcsVoteOnPoll = function (pollId, optionId) {
+// Enhanced global voting function
+window.wpcsVoteOnPoll = function (pollId, optionId, optionElement) {
   console.log('WPCS Poll Debug: Voting on poll', pollId, 'option', optionId);
   
   // Check if user is logged in (if nonce exists)
@@ -376,11 +477,20 @@ window.wpcsVoteOnPoll = function (pollId, optionId) {
     return;
   }
 
-  // Disable the option temporarily to prevent double-clicking
-  const optionElement = document.querySelector(`[data-option-id="${optionId}"]`);
-  if (optionElement) {
-    optionElement.style.pointerEvents = 'none';
-    optionElement.style.opacity = '0.7';
+  // Check if user already voted on this poll
+  const pollCard = document.querySelector(`[data-poll-id="${pollId}"]`);
+  if (pollCard && pollCard.querySelector('.poll-option.user-voted')) {
+    showNotification("You have already voted on this poll", 'info');
+    return;
+  }
+
+  // Disable all options temporarily to prevent double-clicking
+  const allOptions = pollCard?.querySelectorAll('.poll-option');
+  if (allOptions) {
+    allOptions.forEach(option => {
+      option.style.pointerEvents = 'none';
+      option.style.opacity = '0.7';
+    });
   }
 
   const formData = new FormData();
@@ -421,11 +531,30 @@ window.wpcsVoteOnPoll = function (pollId, optionId) {
       console.log('WPCS Poll Debug: Parsed vote response:', data);
       
       if (data.success) {
+        // Mark the selected option as voted
+        if (optionElement) {
+          optionElement.classList.add('selected', 'user-voted');
+          const voteIndicator = optionElement.querySelector('.vote-indicator');
+          if (!voteIndicator) {
+            const optionContent = optionElement.querySelector('.option-content');
+            if (optionContent) {
+              optionContent.innerHTML += '<span class="vote-indicator">✓</span>';
+            }
+          }
+        }
+        
         // Update UI with new vote counts
         if (data.data && data.data.vote_counts) {
           updatePollResults(pollId, data.data.vote_counts);
         }
+        
         showNotification(data.data && data.data.message ? data.data.message : 'Vote recorded successfully!', 'success');
+        
+        // Trigger auto-advance timer if enabled
+        const container = pollCard?.closest('.wpcs-poll-container');
+        if (container && container.wpcsContainer) {
+          container.wpcsContainer.onUserVoted();
+        }
       } else {
         const errorMessage = data.data && data.data.message ? data.data.message : 'Voting failed';
         console.error('WPCS Poll Debug: Vote failed:', errorMessage);
@@ -437,10 +566,12 @@ window.wpcsVoteOnPoll = function (pollId, optionId) {
       showNotification(`Network error: ${error.message}`, 'error');
     })
     .finally(() => {
-      // Re-enable the option
-      if (optionElement) {
-        optionElement.style.pointerEvents = '';
-        optionElement.style.opacity = '';
+      // Re-enable all options
+      if (allOptions) {
+        allOptions.forEach(option => {
+          option.style.pointerEvents = '';
+          option.style.opacity = '';
+        });
       }
     });
 };
@@ -529,7 +660,7 @@ function updatePollResults(pollId, voteCounts) {
       percentageSpan.textContent = percentage.toFixed(1) + '%';
     } else {
       const optionContent = option.querySelector('.option-content');
-      if (optionContent) {
+      if (optionContent && !optionContent.querySelector('.vote-indicator')) {
         optionContent.innerHTML += `<span class="option-percentage">${percentage.toFixed(1)}%</span>`;
       }
     }
@@ -597,6 +728,8 @@ document.addEventListener("DOMContentLoaded", function () {
   
   pollContainers.forEach((container, index) => {
     console.log('WPCS Poll Debug: Initializing container', index);
-    new WPCSPollContainer(container);
+    const containerInstance = new WPCSPollContainer(container);
+    // Store reference for external access
+    container.wpcsContainer = containerInstance;
   });
 });
