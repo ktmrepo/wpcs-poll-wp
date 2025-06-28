@@ -1,6 +1,17 @@
 <?php
+/**
+ * Main Plugin Class
+ *
+ * @package WPCS_Poll
+ * @since 1.0.0
+ */
+
+// Prevent direct access
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 class WPCS_Poll {
-    protected $loader;
     protected $plugin_name;
     protected $version;
 
@@ -21,10 +32,12 @@ class WPCS_Poll {
     }
 
     private function define_admin_hooks() {
-        $plugin_admin = new WPCS_Poll_Admin($this->plugin_name, $this->version);
-        add_action('admin_enqueue_scripts', array($plugin_admin, 'enqueue_styles'));
-        add_action('admin_enqueue_scripts', array($plugin_admin, 'enqueue_scripts'));
-        add_action('admin_menu', array($plugin_admin, 'add_admin_menu'));
+        if (is_admin()) {
+            $plugin_admin = new WPCS_Poll_Admin($this->plugin_name, $this->version);
+            add_action('admin_enqueue_scripts', array($plugin_admin, 'enqueue_styles'));
+            add_action('admin_enqueue_scripts', array($plugin_admin, 'enqueue_scripts'));
+            add_action('admin_menu', array($plugin_admin, 'add_admin_menu'));
+        }
     }
 
     private function define_public_hooks() {
@@ -39,7 +52,7 @@ class WPCS_Poll {
         // Localize script for AJAX
         wp_localize_script($this->plugin_name, 'wpcs_poll_ajax', array(
             'ajax_url' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('wpcs_poll_nonce'),
+            'nonce' => wp_create_nonce('wpcs_poll_vote_nonce'),
             'rest_url' => rest_url('wpcs-poll/v1/')
         ));
     }
