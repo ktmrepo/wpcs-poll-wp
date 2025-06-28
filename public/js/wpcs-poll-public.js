@@ -23,15 +23,19 @@ class WPCSPollContainer {
     // Show loading state
     this.showLoading();
 
+    // Add debug logging
+    console.log('WPCS Poll Debug: Loading polls from:', `${wpcs_poll_ajax.rest_url}polls?category=${category}&limit=${limit}`);
+
     fetch(`${wpcs_poll_ajax.rest_url}polls?category=${category}&limit=${limit}`)
       .then((response) => {
+        console.log('WPCS Poll Debug: Response status:', response.status);
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         return response.json();
       })
       .then((polls) => {
-        console.log('Polls loaded:', polls);
+        console.log('WPCS Poll Debug: Raw polls data:', polls);
         this.polls = polls || [];
         this.renderPolls();
       })
@@ -138,40 +142,67 @@ class WPCSPollContainer {
   }
 
   renderPollOptions(poll) {
-    // Handle different formats of poll.options
+    console.log('WPCS Poll Debug: Rendering options for poll:', poll.id, 'Options type:', typeof poll.options, 'Options:', poll.options);
+    
+    // Handle different formats of poll.options - NO JSON PARSING
     let options = [];
     
-    if (typeof poll.options === 'string') {
+    if (Array.isArray(poll.options)) {
+      // Already an array - use directly
+      options = poll.options;
+      console.log('WPCS Poll Debug: Options is already an array');
+    } else if (poll.options && typeof poll.options === 'object') {
+      // It's an object, convert to array
+      options = Object.values(poll.options);
+      console.log('WPCS Poll Debug: Options is object, converted to array');
+    } else if (typeof poll.options === 'string') {
+      // Only try JSON parsing if it's a string
       try {
-        options = JSON.parse(poll.options);
+        const parsed = JSON.parse(poll.options);
+        if (Array.isArray(parsed)) {
+          options = parsed;
+        } else if (parsed && typeof parsed === 'object') {
+          options = Object.values(parsed);
+        }
+        console.log('WPCS Poll Debug: Successfully parsed JSON string');
       } catch (e) {
-        console.error('Failed to parse poll options JSON:', e);
+        console.error('WPCS Poll Debug: Failed to parse options JSON:', e, 'Raw options:', poll.options);
         options = [];
       }
-    } else if (Array.isArray(poll.options)) {
-      options = poll.options;
-    } else if (poll.options && typeof poll.options === 'object') {
-      // If it's already an object, convert to array
-      options = Object.values(poll.options);
+    } else {
+      console.warn('WPCS Poll Debug: Unknown options format:', typeof poll.options, poll.options);
+      options = [];
     }
+
+    console.log('WPCS Poll Debug: Final processed options:', options);
 
     const totalVotes = this.getTotalVotes(poll);
     const userVote = poll.user_vote;
 
     if (!Array.isArray(options) || options.length === 0) {
+      console.warn('WPCS Poll Debug: No valid options found for poll', poll.id);
       return '<p class="no-options">No options available</p>';
     }
 
     return options
-      .map((option) => {
-        // Handle different option formats
-        const optionId = option.id || option.option_id || `option_${Math.random()}`;
-        const optionText = option.text || option.option_text || option.title || 'Unknown option';
-        const voteCount = parseInt(option.votes || option.vote_count || 0);
+      .map((option, index) => {
+        console.log('WPCS Poll Debug: Processing option:', index, option);
+        
+        // Handle different option formats with more robust checking
+        const optionId = option.id || option.option_id || `option_${index + 1}`;
+        const optionText = option.text || option.option_text || option.title || option.name || `Option ${index + 1}`;
+        const voteCount = parseInt(option.votes || option.vote_count || option.count || 0);
         
         const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
         const isSelected = userVote === optionId;
         const showResults = userVote !== null;
+
+        console.log('WPCS Poll Debug: Option processed:', {
+          id: optionId,
+          text: optionText,
+          votes: voteCount,
+          percentage: percentage
+        });
 
         return `
                 <div class="poll-option ${isSelected ? "selected" : ""} ${showResults ? "show-results" : ""}" 
@@ -311,16 +342,17 @@ class WPCSPollContainer {
   getTotalVotes(poll) {
     let options = [];
     
-    if (typeof poll.options === 'string') {
-      try {
-        options = JSON.parse(poll.options);
-      } catch (e) {
-        options = [];
-      }
-    } else if (Array.isArray(poll.options)) {
+    if (Array.isArray(poll.options)) {
       options = poll.options;
     } else if (poll.options && typeof poll.options === 'object') {
       options = Object.values(poll.options);
+    } else if (typeof poll.options === 'string') {
+      try {
+        const parsed = JSON.parse(poll.options);
+        options = Array.isArray(parsed) ? parsed : Object.values(parsed || {});
+      } catch (e) {
+        options = [];
+      }
     }
 
     if (!Array.isArray(options)) {
@@ -328,7 +360,7 @@ class WPCSPollContainer {
     }
 
     return options.reduce((total, option) => {
-      const votes = parseInt(option.votes || option.vote_count || 0);
+      const votes = parseInt(option.votes || option.vote_count || option.count || 0);
       return total + votes;
     }, 0);
   }

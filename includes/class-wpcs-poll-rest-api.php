@@ -71,8 +71,12 @@ class WPCS_Poll_REST_API {
     }
 
     public function get_polls($request) {
+        // Add debug logging
+        error_log('WPCS Poll REST API: get_polls called');
+        
         $db = $this->get_db();
         if (!$db) {
+            error_log('WPCS Poll REST API: Database service not available');
             return new WP_Error('database_error', 'Database service not available', array('status' => 500));
         }
 
@@ -81,6 +85,8 @@ class WPCS_Poll_REST_API {
         $offset = $request->get_param('offset') ?: 0;
         $search = $request->get_param('search');
         $user_id = get_current_user_id();
+
+        error_log('WPCS Poll REST API: Parameters - category: ' . $category . ', limit: ' . $limit . ', offset: ' . $offset);
 
         // Build query arguments
         $args = array(
@@ -101,47 +107,59 @@ class WPCS_Poll_REST_API {
 
         try {
             $polls = $db->get_polls($args);
+            error_log('WPCS Poll REST API: Found ' . count($polls) . ' polls');
             
             // If no polls found, create sample polls
             if (empty($polls)) {
+                error_log('WPCS Poll REST API: No polls found, creating sample polls');
                 $this->create_sample_polls();
                 $polls = $db->get_polls($args);
+                error_log('WPCS Poll REST API: After creating samples, found ' . count($polls) . ' polls');
             }
 
             // Process polls data for frontend
             foreach ($polls as &$poll) {
-                // Ensure options is properly formatted
+                error_log('WPCS Poll REST API: Processing poll ID ' . $poll->id . ', options type: ' . gettype($poll->options));
+                
+                // Ensure options is properly formatted as an array
                 if (is_string($poll->options)) {
                     $decoded_options = json_decode($poll->options, true);
                     if (json_last_error() === JSON_ERROR_NONE && is_array($decoded_options)) {
                         $poll->options = $decoded_options;
+                        error_log('WPCS Poll REST API: Successfully decoded JSON options for poll ' . $poll->id);
                     } else {
+                        error_log('WPCS Poll REST API: Failed to decode JSON options for poll ' . $poll->id . ': ' . json_last_error_msg());
                         $poll->options = array();
                     }
                 } elseif (!is_array($poll->options)) {
+                    error_log('WPCS Poll REST API: Options is not array for poll ' . $poll->id . ', type: ' . gettype($poll->options));
                     $poll->options = array();
                 }
 
                 // Ensure each option has the required structure
                 $processed_options = array();
-                foreach ($poll->options as $index => $option) {
-                    if (is_string($option)) {
-                        // Convert string option to proper format
-                        $processed_options[] = array(
-                            'id' => 'option_' . ($index + 1),
-                            'text' => $option,
-                            'votes' => 0
-                        );
-                    } elseif (is_array($option)) {
-                        // Ensure option has all required fields
-                        $processed_options[] = array(
-                            'id' => isset($option['id']) ? $option['id'] : 'option_' . ($index + 1),
-                            'text' => isset($option['text']) ? $option['text'] : (isset($option['option_text']) ? $option['option_text'] : 'Option ' . ($index + 1)),
-                            'votes' => isset($option['votes']) ? intval($option['votes']) : (isset($option['vote_count']) ? intval($option['vote_count']) : 0)
-                        );
+                if (is_array($poll->options)) {
+                    foreach ($poll->options as $index => $option) {
+                        if (is_string($option)) {
+                            // Convert string option to proper format
+                            $processed_options[] = array(
+                                'id' => 'option_' . ($index + 1),
+                                'text' => $option,
+                                'votes' => 0
+                            );
+                        } elseif (is_array($option)) {
+                            // Ensure option has all required fields
+                            $processed_options[] = array(
+                                'id' => isset($option['id']) ? $option['id'] : 'option_' . ($index + 1),
+                                'text' => isset($option['text']) ? $option['text'] : (isset($option['option_text']) ? $option['option_text'] : 'Option ' . ($index + 1)),
+                                'votes' => isset($option['votes']) ? intval($option['votes']) : (isset($option['vote_count']) ? intval($option['vote_count']) : 0)
+                            );
+                        }
                     }
                 }
                 $poll->options = $processed_options;
+
+                error_log('WPCS Poll REST API: Final processed options for poll ' . $poll->id . ': ' . json_encode($poll->options));
 
                 // Add user vote information
                 $poll->user_vote = null;
@@ -182,6 +200,7 @@ class WPCS_Poll_REST_API {
                 $poll->is_active = intval($poll->is_active);
             }
 
+            error_log('WPCS Poll REST API: Returning ' . count($polls) . ' processed polls');
             return rest_ensure_response($polls);
 
         } catch (Exception $e) {
@@ -338,6 +357,8 @@ class WPCS_Poll_REST_API {
             return;
         }
 
+        error_log('WPCS Poll REST API: Creating sample polls');
+
         $sample_polls = array(
             array(
                 'title' => 'What\'s your favorite programming language?',
@@ -387,7 +408,12 @@ class WPCS_Poll_REST_API {
         );
 
         foreach ($sample_polls as $poll_data) {
-            $db->create_poll($poll_data);
+            $result = $db->create_poll($poll_data);
+            if (is_wp_error($result)) {
+                error_log('WPCS Poll REST API: Failed to create sample poll: ' . $result->get_error_message());
+            } else {
+                error_log('WPCS Poll REST API: Created sample poll with ID: ' . $result);
+            }
         }
     }
 
