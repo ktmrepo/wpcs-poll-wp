@@ -366,11 +366,21 @@ class WPCSPollContainer {
   }
 }
 
-// Global voting function
+// Global voting function with improved error handling
 window.wpcsVoteOnPoll = function (pollId, optionId) {
-  if (!wpcs_poll_ajax.nonce) {
+  console.log('WPCS Poll Debug: Voting on poll', pollId, 'option', optionId);
+  
+  // Check if user is logged in (if nonce exists)
+  if (!wpcs_poll_ajax || !wpcs_poll_ajax.nonce) {
     showNotification("Please log in to vote", 'error');
     return;
+  }
+
+  // Disable the option temporarily to prevent double-clicking
+  const optionElement = document.querySelector(`[data-option-id="${optionId}"]`);
+  if (optionElement) {
+    optionElement.style.pointerEvents = 'none';
+    optionElement.style.opacity = '0.7';
   }
 
   const formData = new FormData();
@@ -379,29 +389,65 @@ window.wpcsVoteOnPoll = function (pollId, optionId) {
   formData.append("poll_id", pollId);
   formData.append("option_id", optionId);
 
+  console.log('WPCS Poll Debug: Sending vote data:', {
+    action: "wpcs_submit_vote",
+    poll_id: pollId,
+    option_id: optionId,
+    nonce: wpcs_poll_ajax.nonce
+  });
+
   fetch(wpcs_poll_ajax.ajax_url, {
     method: "POST",
     body: formData,
   })
-    .then((response) => response.json())
+    .then((response) => {
+      console.log('WPCS Poll Debug: Vote response status:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      return response.text().then(text => {
+        console.log('WPCS Poll Debug: Raw response text:', text);
+        try {
+          return JSON.parse(text);
+        } catch (e) {
+          console.error('WPCS Poll Debug: Failed to parse JSON response:', e);
+          throw new Error('Invalid JSON response from server');
+        }
+      });
+    })
     .then((data) => {
+      console.log('WPCS Poll Debug: Parsed vote response:', data);
+      
       if (data.success) {
         // Update UI with new vote counts
-        updatePollResults(pollId, data.data.vote_counts);
-        showNotification(data.data.message, 'success');
+        if (data.data && data.data.vote_counts) {
+          updatePollResults(pollId, data.data.vote_counts);
+        }
+        showNotification(data.data && data.data.message ? data.data.message : 'Vote recorded successfully!', 'success');
       } else {
-        showNotification(data.data ? data.data.message : "Voting failed", 'error');
+        const errorMessage = data.data && data.data.message ? data.data.message : 'Voting failed';
+        console.error('WPCS Poll Debug: Vote failed:', errorMessage);
+        showNotification(errorMessage, 'error');
       }
     })
     .catch((error) => {
-      console.error("Voting error:", error);
-      showNotification("Network error occurred", 'error');
+      console.error("WPCS Poll Debug: Voting error:", error);
+      showNotification(`Network error: ${error.message}`, 'error');
+    })
+    .finally(() => {
+      // Re-enable the option
+      if (optionElement) {
+        optionElement.style.pointerEvents = '';
+        optionElement.style.opacity = '';
+      }
     });
 };
 
 // Global bookmark function
 window.wpcsBookmarkPoll = function(pollId) {
-  if (!wpcs_poll_ajax.nonce) {
+  if (!wpcs_poll_ajax || !wpcs_poll_ajax.nonce) {
     showNotification("Please log in to bookmark polls", 'error');
     return;
   }
@@ -418,9 +464,11 @@ window.wpcsBookmarkPoll = function(pollId) {
     .then((response) => response.json())
     .then((data) => {
       if (data.success) {
-        showNotification(data.data.message, 'success');
+        const message = data.data && data.data.message ? data.data.message : 'Bookmark action completed';
+        showNotification(message, 'success');
       } else {
-        showNotification(data.data ? data.data.message : "Bookmark action failed", 'error');
+        const errorMessage = data.data && data.data.message ? data.data.message : 'Bookmark action failed';
+        showNotification(errorMessage, 'error');
       }
     })
     .catch((error) => {
@@ -439,45 +487,58 @@ window.wpcsSharePoll = function(pollId) {
   } else {
     // Fallback to copying URL
     const url = window.location.href + '#poll-' + pollId;
-    navigator.clipboard.writeText(url).then(() => {
-      showNotification('Poll URL copied to clipboard!', 'success');
-    }).catch(() => {
-      showNotification('Could not copy URL', 'error');
-    });
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(() => {
+        showNotification('Poll URL copied to clipboard!', 'success');
+      }).catch(() => {
+        showNotification('Could not copy URL', 'error');
+      });
+    } else {
+      showNotification('Sharing not supported on this device', 'error');
+    }
   }
 };
 
 // Update poll results after voting
 function updatePollResults(pollId, voteCounts) {
+  console.log('WPCS Poll Debug: Updating poll results for poll', pollId, 'with counts:', voteCounts);
+  
   const pollCard = document.querySelector(`[data-poll-id="${pollId}"]`);
-  if (!pollCard) return;
+  if (!pollCard) {
+    console.warn('WPCS Poll Debug: Poll card not found for ID', pollId);
+    return;
+  }
 
   const options = pollCard.querySelectorAll('.poll-option');
-  const totalVotes = Object.values(voteCounts).reduce((sum, count) => sum + count, 0);
+  const totalVotes = Object.values(voteCounts).reduce((sum, count) => sum + parseInt(count || 0), 0);
+
+  console.log('WPCS Poll Debug: Total votes calculated:', totalVotes);
 
   options.forEach(option => {
     const optionId = option.dataset.optionId;
-    const voteCount = voteCounts[optionId] || 0;
+    const voteCount = parseInt(voteCounts[optionId] || 0);
     const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
+
+    console.log('WPCS Poll Debug: Updating option', optionId, 'with', voteCount, 'votes,', percentage.toFixed(1) + '%');
 
     option.classList.add('show-results');
     
-    const percentageSpan = option.querySelector('.option-percentage');
+    // Update or add percentage display
+    let percentageSpan = option.querySelector('.option-percentage');
     if (percentageSpan) {
       percentageSpan.textContent = percentage.toFixed(1) + '%';
     } else {
-      // Add percentage span if it doesn't exist
       const optionContent = option.querySelector('.option-content');
       if (optionContent) {
         optionContent.innerHTML += `<span class="option-percentage">${percentage.toFixed(1)}%</span>`;
       }
     }
 
-    const progressBar = option.querySelector('.progress-bar');
+    // Update or add progress bar
+    let progressBar = option.querySelector('.progress-bar');
     if (progressBar) {
       progressBar.style.width = percentage + '%';
     } else {
-      // Add progress bar if it doesn't exist
       option.innerHTML += `
         <div class="option-progress">
           <div class="progress-bar" style="width: ${percentage}%"></div>
@@ -486,7 +547,8 @@ function updatePollResults(pollId, voteCounts) {
       `;
     }
 
-    const votesSpan = option.querySelector('.option-votes');
+    // Update vote count display
+    let votesSpan = option.querySelector('.option-votes');
     if (votesSpan) {
       votesSpan.textContent = voteCount + ' votes';
     }
@@ -499,8 +561,12 @@ function updatePollResults(pollId, voteCounts) {
   }
 }
 
-// Show notification
+// Show notification with improved styling
 function showNotification(message, type = 'info') {
+  // Remove any existing notifications
+  const existingNotifications = document.querySelectorAll('.wpcs-notification');
+  existingNotifications.forEach(notification => notification.remove());
+
   const notification = document.createElement('div');
   notification.className = `wpcs-notification wpcs-notification-${type}`;
   notification.textContent = message;
@@ -513,14 +579,24 @@ function showNotification(message, type = 'info') {
   // Hide notification
   setTimeout(() => {
     notification.classList.remove('show');
-    setTimeout(() => notification.remove(), 300);
-  }, 3000);
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.remove();
+      }
+    }, 300);
+  }, 4000);
 }
 
 // Initialize poll containers when DOM is ready
 document.addEventListener("DOMContentLoaded", function () {
+  console.log('WPCS Poll Debug: DOM loaded, initializing poll containers');
+  console.log('WPCS Poll Debug: wpcs_poll_ajax object:', wpcs_poll_ajax);
+  
   const pollContainers = document.querySelectorAll(".wpcs-poll-container");
-  pollContainers.forEach((container) => {
+  console.log('WPCS Poll Debug: Found', pollContainers.length, 'poll containers');
+  
+  pollContainers.forEach((container, index) => {
+    console.log('WPCS Poll Debug: Initializing container', index);
     new WPCSPollContainer(container);
   });
 });

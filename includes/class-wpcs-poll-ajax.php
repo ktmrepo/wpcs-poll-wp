@@ -54,30 +54,44 @@ class WPCS_Poll_AJAX {
      * Handles the submission of a new vote.
      */
     public function handle_submit_vote() {
+        // Log the incoming request for debugging
+        error_log('WPCS Poll Debug: Vote submission started');
+        error_log('WPCS Poll Debug: POST data: ' . print_r($_POST, true));
+        
         // Verify nonce
-        check_ajax_referer('wpcs_poll_vote_nonce', '_ajax_nonce');
+        if (!isset($_POST['_ajax_nonce']) || !wp_verify_nonce($_POST['_ajax_nonce'], 'wpcs_poll_vote_nonce')) {
+            error_log('WPCS Poll Debug: Nonce verification failed');
+            wp_send_json_error(array('message' => __('Security check failed.', 'wpcs-poll')), 403);
+            return;
+        }
 
         $poll_id = isset($_POST['poll_id']) ? absint($_POST['poll_id']) : 0;
         $option_id = isset($_POST['option_id']) ? sanitize_text_field($_POST['option_id']) : '';
         $user_id = get_current_user_id();
 
+        error_log('WPCS Poll Debug: Poll ID: ' . $poll_id . ', Option ID: ' . $option_id . ', User ID: ' . $user_id);
+
         $db = $this->get_db();
         if (!$db) {
+            error_log('WPCS Poll Debug: Database service not available');
             wp_send_json_error(array('message' => __('Database service not available.', 'wpcs-poll')), 500);
             return;
         }
 
         if ($poll_id <= 0 || empty($option_id)) {
+            error_log('WPCS Poll Debug: Invalid poll data - Poll ID: ' . $poll_id . ', Option ID: ' . $option_id);
             wp_send_json_error(array('message' => __('Invalid poll data provided.', 'wpcs-poll')), 400);
             return;
         }
 
         $poll = $db->get_poll($poll_id);
         if (!$poll || empty($poll->is_active)) { 
+            error_log('WPCS Poll Debug: Poll not found or inactive - Poll ID: ' . $poll_id);
             wp_send_json_error(array('message' => __('This poll is not currently active or does not exist.', 'wpcs-poll')), 403);
             return;
         }
         
+        // Validate option exists in poll
         $valid_option = false;
         if (is_array($poll->options)) {
             foreach ($poll->options as $opt) {
@@ -88,12 +102,15 @@ class WPCS_Poll_AJAX {
             }
         }
         if (!$valid_option) {
+            error_log('WPCS Poll Debug: Invalid option selected - Option ID: ' . $option_id);
             wp_send_json_error(array('message' => __('Invalid option selected for this poll.', 'wpcs-poll')), 400);
             return;
         }
 
+        // Check user permissions and voting eligibility
         if ($user_id > 0) {
             if ($db->has_user_voted($user_id, $poll_id)) {
+                error_log('WPCS Poll Debug: User already voted - User ID: ' . $user_id . ', Poll ID: ' . $poll_id);
                 wp_send_json_error(array('message' => __('You have already voted on this poll.', 'wpcs-poll')), 403);
                 return;
             }
@@ -102,6 +119,7 @@ class WPCS_Poll_AJAX {
             $guest_voting_allowed = isset($plugin_options['guest_voting']) && $plugin_options['guest_voting'] == 1;
 
             if (!$guest_voting_allowed) {
+                error_log('WPCS Poll Debug: Guest voting not allowed');
                 wp_send_json_error(array('message' => __('Please log in to vote.', 'wpcs-poll')), 401);
                 return;
             }
@@ -112,18 +130,25 @@ class WPCS_Poll_AJAX {
             $ip_address = $this->get_client_ip(); 
         }
 
+        error_log('WPCS Poll Debug: Attempting to add vote');
         $result = $db->add_vote($user_id, $poll_id, $option_id, $ip_address);
 
         if (is_wp_error($result)) {
-            wp_send_json_error(array('message' => $result->get_error_message()), ($result->get_error_code() === 'already_voted' ? 403 : 400) );
+            error_log('WPCS Poll Debug: Vote failed - ' . $result->get_error_message());
+            $error_code = $result->get_error_code();
+            $status_code = ($error_code === 'already_voted') ? 403 : 400;
+            wp_send_json_error(array('message' => $result->get_error_message()), $status_code);
         } else {
+            error_log('WPCS Poll Debug: Vote successful, getting updated counts');
             $new_counts = $db->get_vote_counts_for_poll($poll_id);
             if (is_wp_error($new_counts)) {
-                 wp_send_json_success(array(
+                error_log('WPCS Poll Debug: Failed to get updated vote counts - ' . $new_counts->get_error_message());
+                wp_send_json_success(array(
                     'message' => __('Vote recorded successfully, but could not fetch updated results.', 'wpcs-poll'),
                     'vote_counts' => null
                 ));
             } else {
+                error_log('WPCS Poll Debug: Vote successful with updated counts: ' . print_r($new_counts, true));
                 wp_send_json_success(array(
                     'message' => __('Vote recorded successfully!', 'wpcs-poll'),
                     'vote_counts' => $new_counts
@@ -136,7 +161,10 @@ class WPCS_Poll_AJAX {
      * Handle bookmark functionality
      */
     public function handle_bookmark() {
-        check_ajax_referer('wpcs_poll_nonce', 'nonce');
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'wpcs_poll_nonce')) {
+            wp_send_json_error(array('message' => __('Security check failed.', 'wpcs-poll')));
+            return;
+        }
 
         $poll_id = intval($_POST['poll_id']);
         $user_id = get_current_user_id();
@@ -172,7 +200,10 @@ class WPCS_Poll_AJAX {
      * Handle poll submission
      */
     public function handle_poll_submission() {
-        check_ajax_referer('wpcs_poll_submit_nonce', 'nonce');
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'wpcs_poll_submit_nonce')) {
+            wp_send_json_error(array('message' => __('Security check failed.', 'wpcs-poll')));
+            return;
+        }
 
         $user_id = get_current_user_id();
         if (!$user_id) {
@@ -456,7 +487,10 @@ class WPCS_Poll_AJAX {
      * Handle admin approval
      */
     public function handle_admin_approve() {
-        check_ajax_referer('wpcs_poll_admin_nonce', 'nonce');
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'wpcs_poll_admin_nonce')) {
+            wp_send_json_error(array('message' => __('Security check failed.', 'wpcs-poll')));
+            return;
+        }
 
         if (!current_user_can('manage_options')) {
             wp_send_json_error(array('message' => __('Permission denied.', 'wpcs-poll')));
@@ -483,7 +517,10 @@ class WPCS_Poll_AJAX {
      * Handle admin delete
      */
     public function handle_admin_delete() {
-        check_ajax_referer('wpcs_poll_admin_nonce', 'nonce');
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'wpcs_poll_admin_nonce')) {
+            wp_send_json_error(array('message' => __('Security check failed.', 'wpcs-poll')));
+            return;
+        }
 
         if (!current_user_can('manage_options')) {
             wp_send_json_error(array('message' => __('Permission denied.', 'wpcs-poll')));
@@ -511,7 +548,10 @@ class WPCS_Poll_AJAX {
      * Handle quick actions
      */
     public function handle_quick_action() {
-        check_ajax_referer('wpcs_poll_admin_nonce', 'nonce');
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'wpcs_poll_admin_nonce')) {
+            wp_send_json_error(array('message' => __('Security check failed.', 'wpcs-poll')));
+            return;
+        }
 
         if (!current_user_can('manage_options')) {
             wp_send_json_error(array('message' => __('Permission denied.', 'wpcs-poll')));
@@ -556,7 +596,10 @@ class WPCS_Poll_AJAX {
      * Handle get user activity
      */
     public function handle_get_user_activity() {
-        check_ajax_referer('wpcs_user_activity', 'nonce');
+        if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'wpcs_user_activity')) {
+            wp_send_json_error(array('message' => __('Security check failed.', 'wpcs-poll')));
+            return;
+        }
 
         if (!current_user_can('manage_options')) {
             wp_send_json_error(array('message' => __('Permission denied.', 'wpcs-poll')));
