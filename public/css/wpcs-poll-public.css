@@ -182,5 +182,392 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 14;
+  font-size: 14px;
+}
+
+.poll-category {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.poll-votes {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* Navigation */
+.poll-navigation {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  transform: translateY(-50%);
+  display: flex;
+  justify-content: space-between;
+  padding: 0 20px;
+  pointer-events: none;
+}
+
+.nav-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  pointer-events: all;
+  backdrop-filter: blur(10px);
+}
+
+.nav-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+}
+
+/* Indicators */
+.poll-indicators {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+}
+
+.indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.indicator.active {
+  background: white;
+  transform: scale(1.2);
+}
+
+/* Single Poll Styles */
+.wpcs-single-poll {
+  max-width: 600px;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 12px;
+  padding: 30px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.wpcs-single-poll .poll-header {
+  margin-bottom: 25px;
+  text-align: center;
+}
+
+.wpcs-single-poll .poll-title {
+  color: #333;
+  font-size: 24px;
+  margin-bottom: 10px;
+}
+
+.wpcs-single-poll .poll-description {
+  color: #666;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.wpcs-single-poll .poll-options {
+  margin-bottom: 25px;
+}
+
+.wpcs-single-poll .poll-option {
+  background: #f8f9fa;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  padding: 15px 20px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.wpcs-single-poll .poll-option:hover {
+  background: #e9ecef;
+  border-color: #0073aa;
+}
+
+.wpcs-single-poll .poll-option.selected {
+  background: #e3f2fd;
+  border-color: #0073aa;
+}
+
+.wpcs-single-poll .option-text {
+  color: #333;
+  font-weight: 500;
+}
+
+.wpcs-single-poll .option-percentage {
+  color: #0073aa;
+  font-weight: bold;
+}
+
+.wpcs-single-poll .progress-bar {
+  background: linear-gradient(90deg, rgba(0, 115, 170, 0.2), rgba(0, 115, 170, 0.1));
+}
+
+.wpcs-single-poll .poll-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 20px;
+  border-top: 1px solid #eee;
+}
+
+.wpcs-single-poll .poll-category {
+  background: #0073aa;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.wpcs-single-poll .poll-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.bookmark-btn, .share-btn {
+  background: none;
+  border: none;
+  color: #666;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  transition: color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.bookmark-btn:hover, .share-btn:hover {
+  color: #0073aa;
+}
+
+.poll-footer {
+  text-align: center;
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #eee;
+}
+
+.poll-footer small {
+  color: #999;
+  font-size: 12px;
+}
+
+/* Login Prompt */
+.login-prompt {
+  text-align: center;
+  margin-top: 20px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+}
+
+.login-prompt a {
+  color: #0073aa;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.login-prompt a:hover {
+  text-decoration: underline;
+}
+
+/* Error States */
+.wpcs-poll-error {
+  color: #d63638;
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  padding: 15px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.no-polls-message {
+  text-align: center;
+  padding: 60px 20px;
+  color: #666;
+}
+
+.no-polls-message h3 {
+  margin-bottom: 10px;
+  color: #333;
+}
+
+/* Notifications */
+.wpcs-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 15px 20px;
+  border-radius: 8px;
+  color: white;
+  font-weight: 500;
+  z-index: 10000;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  max-width: 300px;
+}
+
+.wpcs-notification.show {
+  transform: translateX(0);
+}
+
+.wpcs-notification-success {
+  background: #28a745;
+}
+
+.wpcs-notification-error {
+  background: #dc3545;
+}
+
+.wpcs-notification-info {
+  background: #17a2b8;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .wpcs-poll-container {
+    max-width: 100%;
+    border-radius: 0;
+  }
+  
+  .wpcs-poll-style-tiktok {
+    height: 100vh;
+  }
+  
+  .wpcs-single-poll {
+    margin: 20px;
+    padding: 20px;
+  }
+  
+  .poll-navigation {
+    padding: 0 10px;
+  }
+  
+  .nav-btn {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .poll-meta {
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  
+  .poll-actions {
+    align-self: flex-end;
+  }
+}
+
+@media (max-width: 480px) {
+  .poll-title {
+    font-size: 20px;
+  }
+  
+  .poll-description {
+    font-size: 14px;
+  }
+  
+  .option-text {
+    font-size: 14px;
+  }
+  
+  .wpcs-notification {
+    right: 10px;
+    left: 10px;
+    max-width: none;
+  }
+}
+
+/* Loading States */
+.wpcs-polls-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
+  color: #666;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #0073aa;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.wpcs-polls-error {
+  text-align: center;
+  padding: 40px;
+  color: #d63638;
+}
+
+.retry-btn {
+  background: #0073aa;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.retry-btn:hover {
+  background: #005a87;
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .wpcs-poll-card,
+  .poll-option,
+  .nav-btn,
+  .indicator {
+    transition: none;
+  }
+  
+  .loading-spinner {
+    animation: none;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .poll-option {
+    border-width: 3px;
+  }
+  
+  .poll-option:hover,
+  .poll-option.selected {
+    border-width: 4px;
+  }
 }
