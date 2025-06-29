@@ -3,7 +3,7 @@
  * Plugin Name: WPCS Poll
  * Plugin URI: https://yoursite.com/wpcs-poll
  * Description: TikTok-style interactive polling system with comprehensive admin management
- * Version: 1.2.0
+ * Version: 1.2.1
  * Author: Your Name
  * License: GPL v2 or later
  * Text Domain: wpcs-poll
@@ -16,9 +16,9 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('WPCS_POLL_VERSION', '1.2.0');
-define('WPCS_POLL_BUILD_DATE', '2024-12-19 15:30:00');
-define('WPCS_POLL_BUILD_NUMBER', '20241219153000');
+define('WPCS_POLL_VERSION', '1.2.1');
+define('WPCS_POLL_BUILD_DATE', '2024-12-19 16:45:00');
+define('WPCS_POLL_BUILD_NUMBER', '20241219164500');
 define('WPCS_POLL_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WPCS_POLL_PLUGIN_PATH', plugin_dir_path(__FILE__));
 

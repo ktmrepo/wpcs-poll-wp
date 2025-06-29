@@ -54,14 +54,38 @@ class WPCS_Poll_AJAX {
      * Handles the submission of a new vote.
      */
     public function handle_submit_vote() {
-        // Log the incoming request for debugging
+        // Enhanced logging for debugging
         error_log('WPCS Poll Debug: Vote submission started');
         error_log('WPCS Poll Debug: POST data: ' . print_r($_POST, true));
+        error_log('WPCS Poll Debug: User ID: ' . get_current_user_id());
+        error_log('WPCS Poll Debug: Is user logged in: ' . (is_user_logged_in() ? 'Yes' : 'No'));
         
-        // Verify nonce
-        if (!isset($_POST['_ajax_nonce']) || !wp_verify_nonce($_POST['_ajax_nonce'], 'wpcs_poll_vote_nonce')) {
+        // Check if action is correct
+        if (!isset($_POST['action']) || $_POST['action'] !== 'wpcs_submit_vote') {
+            error_log('WPCS Poll Debug: Invalid action: ' . ($_POST['action'] ?? 'not set'));
+            wp_send_json_error(array('message' => __('Invalid action.', 'wpcs-poll')), 400);
+            return;
+        }
+
+        // Enhanced nonce verification with better error messages
+        $nonce_field = '_ajax_nonce';
+        $nonce_action = 'wpcs_poll_vote_nonce';
+        
+        if (!isset($_POST[$nonce_field])) {
+            error_log('WPCS Poll Debug: Nonce field missing');
+            wp_send_json_error(array('message' => __('Security token missing.', 'wpcs-poll')), 403);
+            return;
+        }
+
+        $nonce_value = sanitize_text_field($_POST[$nonce_field]);
+        error_log('WPCS Poll Debug: Nonce value: ' . $nonce_value);
+        error_log('WPCS Poll Debug: Nonce action: ' . $nonce_action);
+
+        if (!wp_verify_nonce($nonce_value, $nonce_action)) {
             error_log('WPCS Poll Debug: Nonce verification failed');
-            wp_send_json_error(array('message' => __('Security check failed.', 'wpcs-poll')), 403);
+            error_log('WPCS Poll Debug: Expected nonce action: ' . $nonce_action);
+            error_log('WPCS Poll Debug: Received nonce: ' . $nonce_value);
+            wp_send_json_error(array('message' => __('Security check failed. Please refresh the page and try again.', 'wpcs-poll')), 403);
             return;
         }
 

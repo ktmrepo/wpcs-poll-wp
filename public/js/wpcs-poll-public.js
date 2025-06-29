@@ -250,10 +250,10 @@ class WPCSPollContainer {
   escapeHtml(text) {
     if (!text) return '';
     const map = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
+      '&': '&',
+      '<': '<',
+      '>': '>',
+      '"': '"',
       "'": '&#039;'
     };
     return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
@@ -467,13 +467,26 @@ class WPCSPollContainer {
   }
 }
 
-// Enhanced global voting function
+// Enhanced global voting function with better error handling
 window.wpcsVoteOnPoll = function (pollId, optionId, optionElement) {
   console.log('WPCS Poll Debug: Voting on poll', pollId, 'option', optionId);
   
-  // Check if user is logged in (if nonce exists)
-  if (!wpcs_poll_ajax || !wpcs_poll_ajax.nonce) {
-    showNotification("Please log in to vote", 'error');
+  // Enhanced debugging for AJAX object
+  console.log('WPCS Poll Debug: wpcs_poll_ajax object:', wpcs_poll_ajax);
+  console.log('WPCS Poll Debug: AJAX URL:', wpcs_poll_ajax?.ajax_url);
+  console.log('WPCS Poll Debug: Nonce:', wpcs_poll_ajax?.nonce);
+  
+  // Check if AJAX object exists
+  if (!wpcs_poll_ajax) {
+    console.error('WPCS Poll Debug: wpcs_poll_ajax object not found');
+    showNotification("Configuration error: AJAX object not found", 'error');
+    return;
+  }
+
+  // Check if nonce exists
+  if (!wpcs_poll_ajax.nonce) {
+    console.error('WPCS Poll Debug: Nonce not found in wpcs_poll_ajax');
+    showNotification("Security token missing. Please refresh the page.", 'error');
     return;
   }
 
@@ -503,7 +516,8 @@ window.wpcsVoteOnPoll = function (pollId, optionId, optionElement) {
     action: "wpcs_submit_vote",
     poll_id: pollId,
     option_id: optionId,
-    nonce: wpcs_poll_ajax.nonce
+    nonce: wpcs_poll_ajax.nonce,
+    ajax_url: wpcs_poll_ajax.ajax_url
   });
 
   fetch(wpcs_poll_ajax.ajax_url, {
@@ -512,9 +526,19 @@ window.wpcsVoteOnPoll = function (pollId, optionId, optionElement) {
   })
     .then((response) => {
       console.log('WPCS Poll Debug: Vote response status:', response.status);
+      console.log('WPCS Poll Debug: Vote response headers:', response.headers);
       
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // Enhanced error handling for different status codes
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        if (response.status === 403) {
+          errorMessage = 'Access denied. Please check your login status and try again.';
+        } else if (response.status === 400) {
+          errorMessage = 'Invalid request. Please refresh the page and try again.';
+        } else if (response.status === 500) {
+          errorMessage = 'Server error. Please try again later.';
+        }
+        throw new Error(errorMessage);
       }
       
       return response.text().then(text => {
@@ -523,7 +547,8 @@ window.wpcsVoteOnPoll = function (pollId, optionId, optionElement) {
           return JSON.parse(text);
         } catch (e) {
           console.error('WPCS Poll Debug: Failed to parse JSON response:', e);
-          throw new Error('Invalid JSON response from server');
+          console.error('WPCS Poll Debug: Response text was:', text);
+          throw new Error('Invalid response format from server');
         }
       });
     })
@@ -548,7 +573,8 @@ window.wpcsVoteOnPoll = function (pollId, optionId, optionElement) {
           updatePollResults(pollId, data.data.vote_counts);
         }
         
-        showNotification(data.data && data.data.message ? data.data.message : 'Vote recorded successfully!', 'success');
+        const message = (data.data && data.data.message) ? data.data.message : 'Vote recorded successfully!';
+        showNotification(message, 'success');
         
         // Trigger auto-advance timer if enabled
         const container = pollCard?.closest('.wpcs-poll-container');
@@ -556,7 +582,7 @@ window.wpcsVoteOnPoll = function (pollId, optionId, optionElement) {
           container.wpcsContainer.onUserVoted();
         }
       } else {
-        const errorMessage = data.data && data.data.message ? data.data.message : 'Voting failed';
+        const errorMessage = (data.data && data.data.message) ? data.data.message : 'Voting failed';
         console.error('WPCS Poll Debug: Vote failed:', errorMessage);
         showNotification(errorMessage, 'error');
       }
