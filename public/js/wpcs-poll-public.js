@@ -250,10 +250,10 @@ class WPCSPollContainer {
   escapeHtml(text) {
     if (!text) return '';
     const map = {
-      '&': '&',
-      '<': '<',
-      '>': '>',
-      '"': '"',
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
       "'": '&#039;'
     };
     return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
@@ -467,19 +467,26 @@ class WPCSPollContainer {
   }
 }
 
-// Enhanced global voting function with better error handling
+// Enhanced global voting function with comprehensive debugging
 window.wpcsVoteOnPoll = function (pollId, optionId, optionElement) {
-  console.log('WPCS Poll Debug: Voting on poll', pollId, 'option', optionId);
+  console.log('WPCS Poll Debug: Voting function called');
+  console.log('WPCS Poll Debug: Poll ID:', pollId, 'Option ID:', optionId);
   
-  // Enhanced debugging for AJAX object
+  // Comprehensive AJAX object debugging
   console.log('WPCS Poll Debug: wpcs_poll_ajax object:', wpcs_poll_ajax);
-  console.log('WPCS Poll Debug: AJAX URL:', wpcs_poll_ajax?.ajax_url);
-  console.log('WPCS Poll Debug: Nonce:', wpcs_poll_ajax?.nonce);
+  
+  if (wpcs_poll_ajax) {
+    console.log('WPCS Poll Debug: AJAX URL:', wpcs_poll_ajax.ajax_url);
+    console.log('WPCS Poll Debug: Nonce:', wpcs_poll_ajax.nonce);
+    console.log('WPCS Poll Debug: User ID:', wpcs_poll_ajax.user_id);
+    console.log('WPCS Poll Debug: Is logged in:', wpcs_poll_ajax.is_logged_in);
+    console.log('WPCS Poll Debug: Plugin version:', wpcs_poll_ajax.plugin_version);
+  }
   
   // Check if AJAX object exists
   if (!wpcs_poll_ajax) {
     console.error('WPCS Poll Debug: wpcs_poll_ajax object not found');
-    showNotification("Configuration error: AJAX object not found", 'error');
+    showNotification("Configuration error: AJAX object not found. Please refresh the page.", 'error');
     return;
   }
 
@@ -487,6 +494,13 @@ window.wpcsVoteOnPoll = function (pollId, optionId, optionElement) {
   if (!wpcs_poll_ajax.nonce) {
     console.error('WPCS Poll Debug: Nonce not found in wpcs_poll_ajax');
     showNotification("Security token missing. Please refresh the page.", 'error');
+    return;
+  }
+
+  // Check if AJAX URL exists
+  if (!wpcs_poll_ajax.ajax_url) {
+    console.error('WPCS Poll Debug: AJAX URL not found');
+    showNotification("Configuration error: AJAX URL missing. Please refresh the page.", 'error');
     return;
   }
 
@@ -506,19 +520,21 @@ window.wpcsVoteOnPoll = function (pollId, optionId, optionElement) {
     });
   }
 
+  // Prepare form data with multiple nonce fields for compatibility
   const formData = new FormData();
   formData.append("action", "wpcs_submit_vote");
   formData.append("_ajax_nonce", wpcs_poll_ajax.nonce);
+  formData.append("nonce", wpcs_poll_ajax.nonce);
+  formData.append("wpcs_nonce", wpcs_poll_ajax.nonce);
   formData.append("poll_id", pollId);
   formData.append("option_id", optionId);
 
-  console.log('WPCS Poll Debug: Sending vote data:', {
-    action: "wpcs_submit_vote",
-    poll_id: pollId,
-    option_id: optionId,
-    nonce: wpcs_poll_ajax.nonce,
-    ajax_url: wpcs_poll_ajax.ajax_url
-  });
+  console.log('WPCS Poll Debug: Sending vote data:');
+  console.log('WPCS Poll Debug: - Action: wpcs_submit_vote');
+  console.log('WPCS Poll Debug: - Poll ID:', pollId);
+  console.log('WPCS Poll Debug: - Option ID:', optionId);
+  console.log('WPCS Poll Debug: - Nonce:', wpcs_poll_ajax.nonce);
+  console.log('WPCS Poll Debug: - AJAX URL:', wpcs_poll_ajax.ajax_url);
 
   fetch(wpcs_poll_ajax.ajax_url, {
     method: "POST",
@@ -537,6 +553,8 @@ window.wpcsVoteOnPoll = function (pollId, optionId, optionElement) {
           errorMessage = 'Invalid request. Please refresh the page and try again.';
         } else if (response.status === 500) {
           errorMessage = 'Server error. Please try again later.';
+        } else if (response.status === 404) {
+          errorMessage = 'Service not found. Please check your WordPress configuration.';
         }
         throw new Error(errorMessage);
       }
@@ -584,6 +602,12 @@ window.wpcsVoteOnPoll = function (pollId, optionId, optionElement) {
       } else {
         const errorMessage = (data.data && data.data.message) ? data.data.message : 'Voting failed';
         console.error('WPCS Poll Debug: Vote failed:', errorMessage);
+        
+        // Show debug info if available
+        if (data.data && data.data.debug_info) {
+          console.log('WPCS Poll Debug: Server debug info:', data.data.debug_info);
+        }
+        
         showNotification(errorMessage, 'error');
       }
     })
@@ -599,6 +623,34 @@ window.wpcsVoteOnPoll = function (pollId, optionId, optionElement) {
           option.style.opacity = '';
         });
       }
+    });
+};
+
+// Test function for debugging
+window.wpcsTestAjax = function() {
+  console.log('WPCS Poll Debug: Testing AJAX connection...');
+  
+  if (!wpcs_poll_ajax) {
+    console.error('WPCS Poll Debug: wpcs_poll_ajax not available');
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append("action", "wpcs_debug_test");
+  formData.append("nonce", wpcs_poll_ajax.nonce);
+  
+  fetch(wpcs_poll_ajax.ajax_url, {
+    method: "POST",
+    body: formData,
+  })
+    .then(response => response.json())
+    .then(data => {
+      console.log('WPCS Poll Debug: Test response:', data);
+      showNotification('AJAX test completed - check console for details', 'info');
+    })
+    .catch(error => {
+      console.error('WPCS Poll Debug: Test failed:', error);
+      showNotification('AJAX test failed - check console for details', 'error');
     });
 };
 
@@ -748,6 +800,16 @@ function showNotification(message, type = 'info') {
 document.addEventListener("DOMContentLoaded", function () {
   console.log('WPCS Poll Debug: DOM loaded, initializing poll containers');
   console.log('WPCS Poll Debug: wpcs_poll_ajax object:', wpcs_poll_ajax);
+  
+  // Add test button for debugging if debug mode is enabled
+  if (wpcs_poll_ajax && wpcs_poll_ajax.debug_mode) {
+    console.log('WPCS Poll Debug: Debug mode enabled, adding test button');
+    const testButton = document.createElement('button');
+    testButton.textContent = 'Test AJAX Connection';
+    testButton.onclick = wpcsTestAjax;
+    testButton.style.cssText = 'position: fixed; top: 10px; right: 10px; z-index: 9999; background: #0073aa; color: white; border: none; padding: 10px; border-radius: 4px; cursor: pointer;';
+    document.body.appendChild(testButton);
+  }
   
   const pollContainers = document.querySelectorAll(".wpcs-poll-container");
   console.log('WPCS Poll Debug: Found', pollContainers.length, 'poll containers');

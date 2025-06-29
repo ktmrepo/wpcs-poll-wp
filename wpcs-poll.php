@@ -3,7 +3,7 @@
  * Plugin Name: WPCS Poll
  * Plugin URI: https://yoursite.com/wpcs-poll
  * Description: TikTok-style interactive polling system with comprehensive admin management
- * Version: 1.2.1
+ * Version: 1.2.2
  * Author: Your Name
  * License: GPL v2 or later
  * Text Domain: wpcs-poll
@@ -16,9 +16,9 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('WPCS_POLL_VERSION', '1.2.1');
-define('WPCS_POLL_BUILD_DATE', '2024-12-19 16:45:00');
-define('WPCS_POLL_BUILD_NUMBER', '20241219164500');
+define('WPCS_POLL_VERSION', '1.2.2');
+define('WPCS_POLL_BUILD_DATE', '2024-12-19 17:15:00');
+define('WPCS_POLL_BUILD_NUMBER', '20241219171500');
 define('WPCS_POLL_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('WPCS_POLL_PLUGIN_PATH', plugin_dir_path(__FILE__));
 
@@ -58,5 +58,21 @@ function wpcs_poll_version_notice() {
         update_option('wpcs_poll_version', WPCS_POLL_VERSION);
         update_option('wpcs_poll_build_date', WPCS_POLL_BUILD_DATE);
         update_option('wpcs_poll_build_number', WPCS_POLL_BUILD_NUMBER);
+    }
+}
+
+// Add debug information for troubleshooting
+add_action('wp_footer', 'wpcs_poll_debug_footer');
+
+function wpcs_poll_debug_footer() {
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        echo "\n<!-- WPCS Poll Debug Footer -->\n";
+        echo "<!-- WordPress Version: " . get_bloginfo('version') . " -->\n";
+        echo "<!-- PHP Version: " . PHP_VERSION . " -->\n";
+        echo "<!-- Plugin Version: " . WPCS_POLL_VERSION . " -->\n";
+        echo "<!-- Current User ID: " . get_current_user_id() . " -->\n";
+        echo "<!-- Is User Logged In: " . (is_user_logged_in() ? 'Yes' : 'No') . " -->\n";
+        echo "<!-- Current Time: " . current_time('mysql') . " -->\n";
+        echo "<!-- End WPCS Poll Debug Footer -->\n";
     }
 }

@@ -16,14 +16,10 @@ class WPCS_Poll_AJAX {
     private $db;
 
     public function __construct() {
-        // Hooks for new vote submission using WPCS_Poll_Database
+        // Enhanced AJAX hooks with better debugging
         add_action('wp_ajax_wpcs_submit_vote', array($this, 'handle_submit_vote'));
+        add_action('wp_ajax_nopriv_wpcs_submit_vote', array($this, 'handle_submit_vote_nopriv'));
         
-        $plugin_options = get_option('wpcs_poll_options', array());
-        if (isset($plugin_options['guest_voting']) && $plugin_options['guest_voting'] == 1) {
-            add_action('wp_ajax_nopriv_wpcs_submit_vote', array($this, 'handle_submit_vote'));
-        }
-
         // Bookmark functionality
         add_action('wp_ajax_wpcs_poll_bookmark', array($this, 'handle_bookmark'));
         
@@ -36,6 +32,12 @@ class WPCS_Poll_AJAX {
         add_action('wp_ajax_wpcs_poll_bulk_upload', array($this, 'handle_bulk_upload'));
         add_action('wp_ajax_wpcs_poll_quick_action', array($this, 'handle_quick_action'));
         add_action('wp_ajax_wpcs_get_user_activity', array($this, 'handle_get_user_activity'));
+        
+        // Debug action for testing
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            add_action('wp_ajax_wpcs_debug_test', array($this, 'handle_debug_test'));
+            add_action('wp_ajax_nopriv_wpcs_debug_test', array($this, 'handle_debug_test'));
+        }
     }
 
     /**
@@ -51,6 +53,44 @@ class WPCS_Poll_AJAX {
     }
 
     /**
+     * Debug test handler
+     */
+    public function handle_debug_test() {
+        error_log('WPCS Poll Debug: Debug test called');
+        error_log('WPCS Poll Debug: User ID: ' . get_current_user_id());
+        error_log('WPCS Poll Debug: Is logged in: ' . (is_user_logged_in() ? 'Yes' : 'No'));
+        error_log('WPCS Poll Debug: POST data: ' . print_r($_POST, true));
+        
+        wp_send_json_success(array(
+            'message' => 'Debug test successful',
+            'user_id' => get_current_user_id(),
+            'is_logged_in' => is_user_logged_in(),
+            'current_user' => wp_get_current_user()->user_login ?? 'None',
+            'nonce_verified' => wp_verify_nonce($_POST['nonce'] ?? '', 'wpcs_poll_vote_nonce')
+        ));
+    }
+
+    /**
+     * Handle vote submission for non-logged users
+     */
+    public function handle_submit_vote_nopriv() {
+        error_log('WPCS Poll Debug: Non-privileged vote submission');
+        
+        // Check if guest voting is allowed
+        $plugin_options = get_option('wpcs_poll_options', array());
+        $guest_voting_allowed = isset($plugin_options['guest_voting']) && $plugin_options['guest_voting'] == 1;
+
+        if (!$guest_voting_allowed) {
+            error_log('WPCS Poll Debug: Guest voting not allowed');
+            wp_send_json_error(array('message' => __('Please log in to vote.', 'wpcs-poll')), 401);
+            return;
+        }
+
+        // Call the main vote handler
+        $this->handle_submit_vote();
+    }
+
+    /**
      * Handles the submission of a new vote.
      */
     public function handle_submit_vote() {
@@ -59,6 +99,7 @@ class WPCS_Poll_AJAX {
         error_log('WPCS Poll Debug: POST data: ' . print_r($_POST, true));
         error_log('WPCS Poll Debug: User ID: ' . get_current_user_id());
         error_log('WPCS Poll Debug: Is user logged in: ' . (is_user_logged_in() ? 'Yes' : 'No'));
+        error_log('WPCS Poll Debug: Current action: ' . ($_POST['action'] ?? 'not set'));
         
         // Check if action is correct
         if (!isset($_POST['action']) || $_POST['action'] !== 'wpcs_submit_vote') {
@@ -67,25 +108,40 @@ class WPCS_Poll_AJAX {
             return;
         }
 
-        // Enhanced nonce verification with better error messages
-        $nonce_field = '_ajax_nonce';
-        $nonce_action = 'wpcs_poll_vote_nonce';
+        // Enhanced nonce verification with multiple fallbacks
+        $nonce_verified = false;
+        $nonce_value = '';
         
-        if (!isset($_POST[$nonce_field])) {
-            error_log('WPCS Poll Debug: Nonce field missing');
-            wp_send_json_error(array('message' => __('Security token missing.', 'wpcs-poll')), 403);
-            return;
+        // Try different nonce field names
+        $nonce_fields = array('_ajax_nonce', 'nonce', 'wpcs_nonce');
+        foreach ($nonce_fields as $field) {
+            if (isset($_POST[$field])) {
+                $nonce_value = sanitize_text_field($_POST[$field]);
+                if (wp_verify_nonce($nonce_value, 'wpcs_poll_vote_nonce')) {
+                    $nonce_verified = true;
+                    error_log('WPCS Poll Debug: Nonce verified with field: ' . $field);
+                    break;
+                }
+            }
         }
 
-        $nonce_value = sanitize_text_field($_POST[$nonce_field]);
-        error_log('WPCS Poll Debug: Nonce value: ' . $nonce_value);
-        error_log('WPCS Poll Debug: Nonce action: ' . $nonce_action);
-
-        if (!wp_verify_nonce($nonce_value, $nonce_action)) {
+        if (!$nonce_verified) {
             error_log('WPCS Poll Debug: Nonce verification failed');
-            error_log('WPCS Poll Debug: Expected nonce action: ' . $nonce_action);
-            error_log('WPCS Poll Debug: Received nonce: ' . $nonce_value);
-            wp_send_json_error(array('message' => __('Security check failed. Please refresh the page and try again.', 'wpcs-poll')), 403);
+            error_log('WPCS Poll Debug: Available POST fields: ' . implode(', ', array_keys($_POST)));
+            error_log('WPCS Poll Debug: Nonce value tried: ' . $nonce_value);
+            
+            // Create a fresh nonce for the response
+            $fresh_nonce = wp_create_nonce('wpcs_poll_vote_nonce');
+            error_log('WPCS Poll Debug: Fresh nonce created: ' . $fresh_nonce);
+            
+            wp_send_json_error(array(
+                'message' => __('Security check failed. Please refresh the page and try again.', 'wpcs-poll'),
+                'debug_info' => array(
+                    'nonce_fields_tried' => $nonce_fields,
+                    'fresh_nonce' => $fresh_nonce,
+                    'user_logged_in' => is_user_logged_in()
+                )
+            ), 403);
             return;
         }
 
